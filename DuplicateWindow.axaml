@@ -1,0 +1,526 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:KidsXmlToCsv.ViewModels"
+        x:Class="KidsXmlToCsv.DuplicateWindow"
+        x:DataType="vm:MainViewModel"
+        Title="KIDS — Konflikte klären"
+        Width="1200" Height="820"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterOwner"
+        Background="White">
+
+  <Window.Styles>
+    <Style Selector="TextBlock">
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="RadioButton">
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+  </Window.Styles>
+
+  <Grid Margin="20" RowDefinitions="Auto,*,Auto">
+
+    <StackPanel Grid.Row="0" Spacing="6">
+      <TextBlock Text="Konflikte klären" FontSize="16" FontWeight="SemiBold" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="Die Schritte werden der Reihe nach abgearbeitet. Jeder Schritt wird erst freigeschaltet, wenn der vorherige vollständig geklärt ist." />
+      <TextBlock Text="{Binding StageStatusText}" FontWeight="SemiBold" Foreground="#b8860b" />
+    </StackPanel>
+
+    <TabControl Grid.Row="1" Margin="0,12,0,0"
+                SelectedIndex="{Binding CurrentTabIndex, Mode=TwoWay}">
+
+      <!-- ============ 1. PersonIdentity ============ -->
+      <TabItem IsEnabled="{Binding PersonIdentityStage.IsUnlocked}">
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="1. Doppel-Personen" />
+            <TextBlock Text="{Binding PersonIdentityPager.TotalCount, StringFormat='({0})'}"
+                       FontSize="12" Foreground="#6b6b6b" />
+            <TextBlock Text="✓" Foreground="#1a7f37" FontWeight="Bold"
+                       IsVisible="{Binding PersonIdentityStage.IsComplete}" />
+          </StackPanel>
+        </TabItem.Header>
+        <Grid RowDefinitions="*,Auto">
+          <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Keine Doppel-Personen erkannt." Classes="muted"
+                         IsVisible="{Binding PersonIdentityPager.IsEmpty}" />
+              <ItemsControl ItemsSource="{Binding PersonIdentityPager.VisibleGroups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border BorderBrush="#e0e0e0" BorderThickness="1" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,10">
+                      <StackPanel Spacing="8">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding TitleText}" FontWeight="SemiBold" FontSize="13" />
+                          <TextBlock Text="{Binding HelpText}" FontSize="12" Foreground="#6b6b6b" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="#b8860b" FontStyle="Italic" />
+                        </StackPanel>
+                        <Border BorderBrush="#e6e6e6" BorderThickness="1" CornerRadius="3">
+                          <StackPanel>
+                            <Grid ColumnDefinitions="36,150,180,120,140,*" Background="#f6f6f6" Height="28">
+                              <TextBlock Grid.Column="0" Text="" />
+                              <TextBlock Grid.Column="1" Text="LKID" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="2" Text="Name" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="3" Text="Geburtsdatum" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="4" Text="Schule" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="5" Text="Ergebnis" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Candidates}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <Grid ColumnDefinitions="36,150,180,120,140,*" Height="30">
+                                    <RadioButton Grid.Column="0" GroupName="{Binding RadioGroupName}"
+                                                 IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Lkid}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="2" Text="{Binding DisplayName}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="3" Text="{Binding DobDisplay}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="4" Text="{Binding SchoolDisplay}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="5" Text="{Binding PreviewText}"
+                                               Foreground="{Binding PreviewBrush}"
+                                               Padding="6,0" VerticalAlignment="Center"
+                                               FontSize="12" FontWeight="SemiBold" />
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Button Content="Alle behalten (verschiedene Personen)"
+                                  Command="{Binding SetKeepAllCommand}"
+                                  FontSize="12" Padding="10,4" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"
+                      HorizontalAlignment="Right" Margin="0,8,0,0"
+                      IsVisible="{Binding PersonIdentityPager.HasNext}">
+            <Button Content="Zurück" Command="{Binding PersonIdentityPager.PreviousPageCommand}"
+                    IsEnabled="{Binding PersonIdentityPager.HasPrevious}" FontSize="12" />
+            <TextBlock Text="{Binding PersonIdentityPager.PageLabel}" VerticalAlignment="Center" FontSize="12" />
+            <Button Content="Weiter" Command="{Binding PersonIdentityPager.NextPageCommand}"
+                    IsEnabled="{Binding PersonIdentityPager.HasNext}" FontSize="12" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <!-- ============ 2. LKID ============ -->
+      <TabItem IsEnabled="{Binding LkidStage.IsUnlocked}">
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="2. LKID" />
+            <TextBlock Text="{Binding LkidPager.TotalCount, StringFormat='({0})'}"
+                       FontSize="12" Foreground="#6b6b6b" />
+            <TextBlock Text="✓" Foreground="#1a7f37" FontWeight="Bold"
+                       IsVisible="{Binding LkidStage.IsComplete}" />
+          </StackPanel>
+        </TabItem.Header>
+        <Grid RowDefinitions="*,Auto">
+          <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Keine LKID-Konflikte." Classes="muted"
+                         IsVisible="{Binding LkidPager.IsEmpty}" />
+              <ItemsControl ItemsSource="{Binding LkidPager.VisibleGroups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border BorderBrush="#e0e0e0" BorderThickness="1" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,10">
+                      <StackPanel Spacing="8">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding TitleText}" FontWeight="SemiBold" FontSize="13" />
+                          <TextBlock Text="{Binding HelpText}" FontSize="12" Foreground="#6b6b6b" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="#b8860b" FontStyle="Italic" />
+                        </StackPanel>
+                        <Border BorderBrush="#e6e6e6" BorderThickness="1" CornerRadius="3">
+                          <StackPanel>
+                            <Grid ColumnDefinitions="36,160,180,160,*" Background="#f6f6f6" Height="28">
+                              <TextBlock Grid.Column="0" Text="" />
+                              <TextBlock Grid.Column="1" Text="LKID" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="2" Text="Name" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="3" Text="Schule" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="4" Text="Ergebnis" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Candidates}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <Grid ColumnDefinitions="36,160,180,160,*" Height="30">
+                                    <RadioButton Grid.Column="0" GroupName="{Binding RadioGroupName}"
+                                                 IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Lkid}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="2" Text="{Binding DisplayName}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="3" Text="{Binding SchoolDisplay}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="4" Text="{Binding PreviewText}"
+                                               Foreground="{Binding PreviewBrush}"
+                                               Padding="6,0" VerticalAlignment="Center"
+                                               FontSize="12" FontWeight="SemiBold" />
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Button Content="Alle verwerfen (nichts exportieren)"
+                                  Command="{Binding SetDiscardAllCommand}"
+                                  FontSize="12" Padding="10,4" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"
+                      HorizontalAlignment="Right" Margin="0,8,0,0"
+                      IsVisible="{Binding LkidPager.HasNext}">
+            <Button Content="Zurück" Command="{Binding LkidPager.PreviousPageCommand}"
+                    IsEnabled="{Binding LkidPager.HasPrevious}" FontSize="12" />
+            <TextBlock Text="{Binding LkidPager.PageLabel}" VerticalAlignment="Center" FontSize="12" />
+            <Button Content="Weiter" Command="{Binding LkidPager.NextPageCommand}"
+                    IsEnabled="{Binding LkidPager.HasNext}" FontSize="12" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <!-- ============ 3. Username ============ -->
+      <TabItem IsEnabled="{Binding UsernameStage.IsUnlocked}">
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="3. Benutzername" />
+            <TextBlock Text="{Binding UsernamePager.TotalCount, StringFormat='({0})'}"
+                       FontSize="12" Foreground="#6b6b6b" />
+            <TextBlock Text="✓" Foreground="#1a7f37" FontWeight="Bold"
+                       IsVisible="{Binding UsernameStage.IsComplete}" />
+          </StackPanel>
+        </TabItem.Header>
+        <Grid RowDefinitions="*,Auto">
+          <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Keine Benutzernamen-Konflikte." Classes="muted"
+                         IsVisible="{Binding UsernamePager.IsEmpty}" />
+              <ItemsControl ItemsSource="{Binding UsernamePager.VisibleGroups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border BorderBrush="#e0e0e0" BorderThickness="1" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,10">
+                      <StackPanel Spacing="8">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding TitleText}" FontWeight="SemiBold" FontSize="13" />
+                          <TextBlock Text="{Binding HelpText}" FontSize="12" Foreground="#6b6b6b" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="#b8860b" FontStyle="Italic" />
+                        </StackPanel>
+                        <Border BorderBrush="#e6e6e6" BorderThickness="1" CornerRadius="3">
+                          <StackPanel>
+                            <Grid ColumnDefinitions="36,160,180,150,*" Background="#f6f6f6" Height="28">
+                              <TextBlock Grid.Column="0" Text="" />
+                              <TextBlock Grid.Column="1" Text="LKID" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="2" Text="Name" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="3" Text="Aktuell" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="4" Text="Ergebnis" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Candidates}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <Grid ColumnDefinitions="36,160,180,150,*" Height="30">
+                                    <RadioButton Grid.Column="0" GroupName="{Binding RadioGroupName}"
+                                                 IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Lkid}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="2" Text="{Binding DisplayName}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="3" Text="{Binding CurrentValue}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="4" Text="{Binding PreviewText}"
+                                               Foreground="{Binding PreviewBrush}"
+                                               Padding="6,0" VerticalAlignment="Center"
+                                               FontSize="12" FontWeight="SemiBold" />
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="16" IsVisible="{Binding IsKeepMode}">
+                          <TextBlock Text="Andere Einträge:" VerticalAlignment="Center" FontSize="12" Foreground="#6b6b6b" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="generieren"
+                                       IsChecked="{Binding IsModeKeepAndGenerate}" FontSize="12" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="leeren"
+                                       IsChecked="{Binding IsModeKeepAndBlank}" FontSize="12" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="Zeile verwerfen"
+                                       IsChecked="{Binding IsModeKeepAndDisregard}" FontSize="12" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Button Content="Alle generieren" Command="{Binding SetGenerateAllCommand}" FontSize="12" Padding="10,4" />
+                          <Button Content="Alle entfernen" Command="{Binding SetDiscardAllCommand}" FontSize="12" Padding="10,4" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Border BorderBrush="#b3b3b3" BorderThickness="1,0,0,0" Padding="12,8,0,0"
+                      IsVisible="{Binding HasEmptyUsernames}">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="{Binding EmptyUsernameCount, StringFormat='Leere Benutzernamen ({0})'}"
+                             FontWeight="SemiBold" FontSize="12" />
+                  <CheckBox Content="Für leere Einträge automatisch generieren"
+                            IsChecked="{Binding GenerateEmptyUsernames}" FontSize="12" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"
+                      HorizontalAlignment="Right" Margin="0,8,0,0"
+                      IsVisible="{Binding UsernamePager.HasNext}">
+            <Button Content="Zurück" Command="{Binding UsernamePager.PreviousPageCommand}"
+                    IsEnabled="{Binding UsernamePager.HasPrevious}" FontSize="12" />
+            <TextBlock Text="{Binding UsernamePager.PageLabel}" VerticalAlignment="Center" FontSize="12" />
+            <Button Content="Weiter" Command="{Binding UsernamePager.NextPageCommand}"
+                    IsEnabled="{Binding UsernamePager.HasNext}" FontSize="12" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <!-- ============ 4. Apple ID ============ -->
+      <TabItem IsEnabled="{Binding AppleIdStage.IsUnlocked}">
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="4. Apple ID" />
+            <TextBlock Text="{Binding AppleIdPager.TotalCount, StringFormat='({0})'}"
+                       FontSize="12" Foreground="#6b6b6b" />
+            <TextBlock Text="✓" Foreground="#1a7f37" FontWeight="Bold"
+                       IsVisible="{Binding AppleIdStage.IsComplete}" />
+          </StackPanel>
+        </TabItem.Header>
+        <Grid RowDefinitions="*,Auto">
+          <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Keine Apple-ID-Konflikte." Classes="muted"
+                         IsVisible="{Binding AppleIdPager.IsEmpty}" />
+              <ItemsControl ItemsSource="{Binding AppleIdPager.VisibleGroups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border BorderBrush="#e0e0e0" BorderThickness="1" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,10">
+                      <StackPanel Spacing="8">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding TitleText}" FontWeight="SemiBold" FontSize="13" />
+                          <TextBlock Text="{Binding HelpText}" FontSize="12" Foreground="#6b6b6b" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="#b8860b" FontStyle="Italic" />
+                        </StackPanel>
+                        <Border BorderBrush="#e6e6e6" BorderThickness="1" CornerRadius="3">
+                          <StackPanel>
+                            <Grid ColumnDefinitions="36,160,180,220,*" Background="#f6f6f6" Height="28">
+                              <TextBlock Grid.Column="0" Text="" />
+                              <TextBlock Grid.Column="1" Text="LKID" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="2" Text="Name" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="3" Text="Aktuell" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="4" Text="Ergebnis" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Candidates}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <Grid ColumnDefinitions="36,160,180,220,*" Height="30">
+                                    <RadioButton Grid.Column="0" GroupName="{Binding RadioGroupName}"
+                                                 IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Lkid}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="2" Text="{Binding DisplayName}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="3" Text="{Binding CurrentValue}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="4" Text="{Binding PreviewText}"
+                                               Foreground="{Binding PreviewBrush}"
+                                               Padding="6,0" VerticalAlignment="Center"
+                                               FontSize="12" FontWeight="SemiBold" />
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="16" IsVisible="{Binding IsKeepMode}">
+                          <TextBlock Text="Andere Einträge:" VerticalAlignment="Center" FontSize="12" Foreground="#6b6b6b" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="generieren"
+                                       IsChecked="{Binding IsModeKeepAndGenerate}" FontSize="12" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="leeren"
+                                       IsChecked="{Binding IsModeKeepAndBlank}" FontSize="12" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="Zeile verwerfen"
+                                       IsChecked="{Binding IsModeKeepAndDisregard}" FontSize="12" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Button Content="Alle generieren" Command="{Binding SetGenerateAllCommand}" FontSize="12" Padding="10,4" />
+                          <Button Content="Alle entfernen" Command="{Binding SetDiscardAllCommand}" FontSize="12" Padding="10,4" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Border BorderBrush="#b3b3b3" BorderThickness="1,0,0,0" Padding="12,8,0,0"
+                      IsVisible="{Binding HasEmptyAppleIds}">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="{Binding EmptyAppleIdCount, StringFormat='Leere Apple IDs ({0})'}"
+                             FontWeight="SemiBold" FontSize="12" />
+                  <CheckBox Content="Für leere Einträge automatisch generieren"
+                            IsChecked="{Binding GenerateEmptyAppleIds}" FontSize="12" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"
+                      HorizontalAlignment="Right" Margin="0,8,0,0"
+                      IsVisible="{Binding AppleIdPager.HasNext}">
+            <Button Content="Zurück" Command="{Binding AppleIdPager.PreviousPageCommand}"
+                    IsEnabled="{Binding AppleIdPager.HasPrevious}" FontSize="12" />
+            <TextBlock Text="{Binding AppleIdPager.PageLabel}" VerticalAlignment="Center" FontSize="12" />
+            <Button Content="Weiter" Command="{Binding AppleIdPager.NextPageCommand}"
+                    IsEnabled="{Binding AppleIdPager.HasNext}" FontSize="12" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <!-- ============ 5. System-E-Mail ============ -->
+      <TabItem IsEnabled="{Binding SystemEmailStage.IsUnlocked}">
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="5. System-E-Mail" />
+            <TextBlock Text="{Binding SystemEmailPager.TotalCount, StringFormat='({0})'}"
+                       FontSize="12" Foreground="#6b6b6b" />
+            <TextBlock Text="✓" Foreground="#1a7f37" FontWeight="Bold"
+                       IsVisible="{Binding SystemEmailStage.IsComplete}" />
+          </StackPanel>
+        </TabItem.Header>
+        <Grid RowDefinitions="*,Auto">
+          <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Keine System-E-Mail-Konflikte." Classes="muted"
+                         IsVisible="{Binding SystemEmailPager.IsEmpty}" />
+              <ItemsControl ItemsSource="{Binding SystemEmailPager.VisibleGroups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border BorderBrush="#e0e0e0" BorderThickness="1" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,10">
+                      <StackPanel Spacing="8">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding TitleText}" FontWeight="SemiBold" FontSize="13" />
+                          <TextBlock Text="{Binding HelpText}" FontSize="12" Foreground="#6b6b6b" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="#b8860b" FontStyle="Italic" />
+                        </StackPanel>
+                        <Border BorderBrush="#e6e6e6" BorderThickness="1" CornerRadius="3">
+                          <StackPanel>
+                            <Grid ColumnDefinitions="36,160,180,220,*" Background="#f6f6f6" Height="28">
+                              <TextBlock Grid.Column="0" Text="" />
+                              <TextBlock Grid.Column="1" Text="LKID" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="2" Text="Name" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="3" Text="Aktuell" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                              <TextBlock Grid.Column="4" Text="Ergebnis" Padding="6,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Candidates}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <Grid ColumnDefinitions="36,160,180,220,*" Height="30">
+                                    <RadioButton Grid.Column="0" GroupName="{Binding RadioGroupName}"
+                                                 IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Lkid}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="2" Text="{Binding DisplayName}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="3" Text="{Binding CurrentValue}" Padding="6,0"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="4" Text="{Binding PreviewText}"
+                                               Foreground="{Binding PreviewBrush}"
+                                               Padding="6,0" VerticalAlignment="Center"
+                                               FontSize="12" FontWeight="SemiBold" />
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="16" IsVisible="{Binding IsKeepMode}">
+                          <TextBlock Text="Andere Einträge:" VerticalAlignment="Center" FontSize="12" Foreground="#6b6b6b" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="generieren"
+                                       IsChecked="{Binding IsModeKeepAndGenerate}" FontSize="12" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="leeren"
+                                       IsChecked="{Binding IsModeKeepAndBlank}" FontSize="12" />
+                          <RadioButton GroupName="{Binding RadioGroupName}_sub" Content="Zeile verwerfen"
+                                       IsChecked="{Binding IsModeKeepAndDisregard}" FontSize="12" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Button Content="Alle generieren" Command="{Binding SetGenerateAllCommand}" FontSize="12" Padding="10,4" />
+                          <Button Content="Alle entfernen" Command="{Binding SetDiscardAllCommand}" FontSize="12" Padding="10,4" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Border BorderBrush="#b3b3b3" BorderThickness="1,0,0,0" Padding="12,8,0,0"
+                      IsVisible="{Binding HasEmptySystemEmails}">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="{Binding EmptySystemEmailCount, StringFormat='Leere System-E-Mails ({0})'}"
+                             FontWeight="SemiBold" FontSize="12" />
+                  <CheckBox Content="Für leere Einträge automatisch generieren"
+                            IsChecked="{Binding GenerateEmptySystemEmails}" FontSize="12" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"
+                      HorizontalAlignment="Right" Margin="0,8,0,0"
+                      IsVisible="{Binding SystemEmailPager.HasNext}">
+            <Button Content="Zurück" Command="{Binding SystemEmailPager.PreviousPageCommand}"
+                    IsEnabled="{Binding SystemEmailPager.HasPrevious}" FontSize="12" />
+            <TextBlock Text="{Binding SystemEmailPager.PageLabel}" VerticalAlignment="Center" FontSize="12" />
+            <Button Content="Weiter" Command="{Binding SystemEmailPager.NextPageCommand}"
+                    IsEnabled="{Binding SystemEmailPager.HasNext}" FontSize="12" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+    </TabControl>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal"
+                HorizontalAlignment="Right" Spacing="8" Margin="0,16,0,0">
+      <Button Content="Alle Standardwerte übernehmen"
+              Command="{Binding AcceptAllDefaultsCommand}" />
+      <Button Content="Rest verwerfen"
+              Command="{Binding DiscardAllRemainingCommand}" />
+      <Button Content="Schließen" Click="CloseButton_Click" Classes="primary" />
+    </StackPanel>
+  </Grid>
+</Window>
