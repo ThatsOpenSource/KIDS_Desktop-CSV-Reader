@@ -12,11 +12,8 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-        {
-            try { File.WriteAllText(CrashLogPath, e.ExceptionObject?.ToString() ?? "unknown"); }
-            catch { /* best effort */ }
-        };
+        // Clean slate — no crash log for a clean run. Prevents accumulation.
+        try { if (File.Exists(CrashLogPath)) File.Delete(CrashLogPath); } catch { }
 
         try
         {
@@ -24,8 +21,13 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            try { File.WriteAllText(CrashLogPath, ex.ToString()); } catch { }
-            throw;
+            try
+            {
+                File.WriteAllText(CrashLogPath,
+                    $"Utc: {DateTime.UtcNow:O}\n{ex}\n");
+            }
+            catch { /* best effort */ }
+            // No rethrow: the log is the artifact. The debug script reports its path.
         }
     }
 

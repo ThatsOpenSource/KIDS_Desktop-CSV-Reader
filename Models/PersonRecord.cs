@@ -2,6 +2,7 @@ namespace KidsXmlToCsv.Models;
 
 public sealed record PersonRecord
 {
+    public Guid RecordId { get; init; } = Guid.NewGuid();   // ← ADD THIS
     public string Lkid { get; set; } = "";
     public string FirstName { get; set; } = "";
     public string LastName { get; set; } = "";

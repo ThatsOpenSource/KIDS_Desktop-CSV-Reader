@@ -13,6 +13,9 @@ namespace KidsXmlToCsv.ViewModels;
 
 public sealed partial class MainViewModel : ObservableObject
 {
+    private enum DecisionKind { Keep, Generate, Drop }
+    private readonly record struct Decision(DecisionKind Kind, string? Value);
+
     private sealed class RefEq : IEqualityComparer<PersonRecord>
     {
         public static readonly RefEq Instance = new();
@@ -20,12 +23,9 @@ public sealed partial class MainViewModel : ObservableObject
         public int GetHashCode(PersonRecord obj) => RuntimeHelpers.GetHashCode(obj);
     }
 
-  private enum DecisionKind { Keep, Generate, Drop }
-  private readonly record struct Decision(DecisionKind Kind, string? Value);
-
-  private readonly ExportPipeline _pipeline = new();
-  private bool _suppressGroupHandlers;
-  private bool _inRecompute;
+    private readonly ExportPipeline _pipeline = new();
+    private bool _suppressGroupHandlers;
+    private bool _inRecompute;
 
     public ObservableCollection<string> SelectedZips { get; } = new();
 
@@ -37,7 +37,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     public StageState[] AllStages { get; }
 
-    // Pager aliases for XAML
     public PaginatedGroupCollection PersonIdentityPager => PersonIdentityStage.Pager;
     public PaginatedGroupCollection LkidPager           => LkidStage.Pager;
     public PaginatedGroupCollection UsernamePager       => UsernameStage.Pager;
@@ -106,7 +105,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string DownloadButtonText =>
         NeedsResolution
             ? $"Erst Konflikte klären ({UnresolvedGroups} offen)"
-            : "KIDS-CSV herunterladen";
+            : "KIDS-Export herunterladen";
 
     public string DuplicateButtonText =>
         $"Konflikte prüfen ({ResolvedGroups}/{TotalDuplicateGroups})";
@@ -178,14 +177,9 @@ public sealed partial class MainViewModel : ObservableObject
             var result = await Task.Run(() => _pipeline.Run(zips, prog));
             Result = result;
 
-            // Build the preview grid snapshot (one property change → fast on 10K rows).
             var rows = new List<PersonRow>(result.Persons.Count);
             foreach (var p in result.Persons)
-            {
-                rows.Add(PersonRow.From(p,
-                    isDupLkid: false, isDupUsername: false,
-                    isDupAppleId: false, isDupSystemEmail: false));
-            }
+                rows.Add(PersonRow.From(p));
             PreviewRows = rows;
 
             HasResult = true;
@@ -242,51 +236,62 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void AcceptAllDefaults()
     {
-        var snapshot = AllStages
-            .Where(s => s.IsUnlocked)
-            .SelectMany(s => s.Pager.AllGroups)
-            .ToList();
-
-        _suppressGroupHandlers = true;
-        try
+        for (int pass = 0; pass < 6; pass++)
         {
-            foreach (var g in snapshot)
-                g.AcceptDefault();
-        }
-        finally
-        {
-            _suppressGroupHandlers = false;
-        }
+            var snapshot = AllStages
+                .Where(s => s.IsUnlocked)
+                .SelectMany(s => s.Pager.AllGroups)
+                .Where(g => !g.IsResolved)
+                .ToList();
 
-        RecomputeFrom(0);
+            if (snapshot.Count == 0) break;
+
+            _suppressGroupHandlers = true;
+            try
+            {
+                foreach (var g in snapshot)
+                    g.AcceptDefault();
+            }
+            finally
+            {
+                _suppressGroupHandlers = false;
+            }
+
+            RecomputeFrom(0);
+        }
     }
 
     [RelayCommand]
     private void DiscardAllRemaining()
     {
-        var snapshot = AllStages
-            .Where(s => s.IsUnlocked)
-            .SelectMany(s => s.Pager.AllGroups.Select(g => (Stage: s, Group: g)))
-            .ToList();
-
-        _suppressGroupHandlers = true;
-        try
+        for (int pass = 0; pass < 6; pass++)
         {
-            foreach (var (stage, g) in snapshot)
+            var snapshot = AllStages
+                .Where(s => s.IsUnlocked)
+                .SelectMany(s => s.Pager.AllGroups.Select(g => (Stage: s, Group: g)))
+                .Where(x => !x.Group.IsResolved)
+                .ToList();
+
+            if (snapshot.Count == 0) break;
+
+            _suppressGroupHandlers = true;
+            try
             {
-                if (g.IsResolved) continue;
-                if (stage.Kind is DuplicateKind.PersonIdentity)
-                    g.AcceptDefault();   // must keep one record
-                else
-                    g.Mode = ResolutionMode.DiscardAll;
+                foreach (var (stage, g) in snapshot)
+                {
+                    if (stage.Kind is DuplicateKind.PersonIdentity)
+                        g.AcceptDefault();     // must keep one record
+                    else
+                        g.Mode = ResolutionMode.DiscardAll;
+                }
             }
-        }
-        finally
-        {
-            _suppressGroupHandlers = false;
-        }
+            finally
+            {
+                _suppressGroupHandlers = false;
+            }
 
-        RecomputeFrom(0);
+            RecomputeFrom(0);
+        }
     }
 
     private void ClearPreview()
@@ -310,50 +315,49 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasPreview));
     }
 
-    // ---------------- Sequential pipeline ----------------
-
     private void RecomputeFrom(int startIdx)
     {
-      if (_inRecompute) return;
-      _inRecompute = true;
-
-    try {
         if (Result is null || startIdx < 0) return;
-
-        for (int i = startIdx; i < AllStages.Length; i++)
+        if (_inRecompute) return;
+        _inRecompute = true;
+        try
         {
-            var stage = AllStages[i];
-            var prevComplete = i == 0 || AllStages[i - 1].IsComplete;
-
-            if (!prevComplete)
+            for (int i = startIdx; i < AllStages.Length; i++)
             {
-                // Lock this and every downstream stage.
-                stage.InputRecords = new();
-                stage.OutputRecords = new();
-                stage.Pager.Clear();
-                stage.IsUnlocked = false;
-                stage.IsComplete = false;
-                continue;
+                var stage = AllStages[i];
+                var prevComplete = i == 0 || AllStages[i - 1].IsComplete;
+
+                if (!prevComplete)
+                {
+                    stage.InputRecords = new();
+                    stage.OutputRecords = new();
+                    stage.Pager.Clear();
+                    stage.IsUnlocked = false;
+                    stage.IsComplete = false;
+                    continue;
+                }
+
+                stage.IsUnlocked = true;
+                stage.InputRecords = i == 0 ? Result.Persons.ToList() : AllStages[i - 1].OutputRecords;
+
+                var dups = DetectForKind(stage.Kind, stage.InputRecords);
+                var newGroups = CreateGroups(dups, stage.Kind);
+                ReconcileGroups(stage.Pager.AllGroups.ToList(), newGroups);
+                stage.Pager.SetGroups(newGroups);
+                AttachGroupHandlers(stage);
+
+                stage.OutputRecords = ApplyStageResolution(stage);
+                stage.IsComplete = stage.Pager.AllGroups.Count == 0
+                                || stage.Pager.AllGroups.All(g => g.IsResolved);
             }
 
-            stage.IsUnlocked = true;
-            stage.InputRecords = i == 0 ? Result.Persons.ToList() : AllStages[i - 1].OutputRecords;
-
-            var dups = DetectForKind(stage.Kind, stage.InputRecords);
-            var newGroups = CreateGroups(dups, stage.Kind);
-            ReconcileGroups(stage.Pager.AllGroups.ToList(), newGroups);
-            stage.Pager.SetGroups(newGroups);
-            AttachGroupHandlers(stage);
-
-            stage.OutputRecords = ApplyStageResolution(stage);
-            stage.IsComplete = stage.Pager.AllGroups.Count == 0 || stage.Pager.AllGroups.All(g => g.IsResolved);
+            RaiseAllCounts();
+            RefreshPreviews();
         }
-
-        RaiseAllCounts();
-        RefreshPreviews();
-      } finally {
-        _inRecompute = false;
-      }
+        finally
+        {
+            _inRecompute = false;
+        }
     }
 
     private void AttachGroupHandlers(StageState stage)
@@ -364,12 +368,8 @@ public sealed partial class MainViewModel : ObservableObject
             g.PropertyChanged += (_, e) =>
             {
                 if (_suppressGroupHandlers) return;
-                if (e.PropertyName is nameof(DuplicateGroup.Mode)
-                    or nameof(DuplicateGroup.SelectedCandidate)
-                    or nameof(DuplicateGroup.IsResolved))
-                {
+                if (e.PropertyName == nameof(DuplicateGroup.IsResolved))
                     RecomputeFrom(stageIdx);
-                }
             };
         }
     }
@@ -394,38 +394,41 @@ public sealed partial class MainViewModel : ObservableObject
         return groups;
     }
 
+    /// <summary>
+    /// Re-attaches user state from the previous group instances to the freshly
+    /// rebuilt ones. Matches candidates by <see cref="PersonRecord.RecordId"/>
+    /// (stable across every <c>with</c> copy), so selection persists across
+    /// recomputes in every stage — including LKID/PersonIdentity where multiple
+    /// candidates share the same LKID.
+    /// </summary>
     private static void ReconcileGroups(List<DuplicateGroup> oldGroups, List<DuplicateGroup> newGroups)
     {
         var oldByKey = oldGroups.ToDictionary(g => g.Key, StringComparer.OrdinalIgnoreCase);
+
         foreach (var newG in newGroups)
         {
             if (!oldByKey.TryGetValue(newG.Key, out var oldG)) continue;
-            if (!oldG.IsResolved) continue;
 
-            var oldSelLkid = oldG.SelectedCandidate?.Record.Lkid;
+            var oldSel = oldG.SelectedCandidate;
             DuplicateCandidate? newSel = null;
-            if (!string.IsNullOrEmpty(oldSelLkid))
+            if (oldSel is not null)
                 newSel = newG.Candidates.FirstOrDefault(c =>
-                    c.Record.Lkid.Equals(oldSelLkid, StringComparison.OrdinalIgnoreCase));
+                    c.Record.RecordId == oldSel.Record.RecordId);
 
-            if (newSel is not null)
+            newG.SuppressSelectionUpdate = true;
+            try
             {
-                newG.Mode = oldG.Mode;
-                newG.SuppressSelectionUpdate = true;
-                newG.SelectedCandidate = newSel;
-                newG.SuppressSelectionUpdate = false;
-                newSel.SetSelectedSilent(true);
+                if (newSel is not null)
+                    newG.SelectedCandidate = newSel;
+                if (oldG.Mode != ResolutionMode.Unresolved)
+                    newG.Mode = oldG.Mode;
             }
-            else if (oldG.Mode is ResolutionMode.GenerateAll
-                              or ResolutionMode.DiscardAll
-                              or ResolutionMode.KeepAll)
+            finally
             {
-                newG.Mode = oldG.Mode;
+                newG.SuppressSelectionUpdate = false;
             }
         }
     }
-
-    // ---------------- Per-stage resolution ----------------
 
     private List<PersonRecord> ApplyStageResolution(StageState stage) => stage.Kind switch
     {
@@ -488,7 +491,7 @@ public sealed partial class MainViewModel : ObservableObject
             foreach (var r in stage.InputRecords)
                 if (!string.IsNullOrEmpty(r.Username)) usernameTaken.Add(r.Username);
 
-        // Phase 1 — decide per record (Keep / Generate / Drop), and reserve kept values.
+        // Phase 1 — classify per record
         foreach (var p in stage.InputRecords)
         {
             var v = getField(p);
@@ -509,7 +512,11 @@ public sealed partial class MainViewModel : ObservableObject
                         if (selected)
                         {
                             decisions[p] = new Decision(DecisionKind.Keep, v);
-                            if (hasValue) { taken.Add(v!); if (isUsername) taken.Add(UsernameGenerator.SanitizeUsername(v!)); }
+                            if (hasValue)
+                            {
+                                taken.Add(v!);
+                                if (isUsername) taken.Add(UsernameGenerator.SanitizeUsername(v!));
+                            }
                         }
                         else decisions[p] = new Decision(DecisionKind.Keep, null);
                         break;
@@ -517,7 +524,11 @@ public sealed partial class MainViewModel : ObservableObject
                         if (selected)
                         {
                             decisions[p] = new Decision(DecisionKind.Keep, v);
-                            if (hasValue) { taken.Add(v!); if (isUsername) taken.Add(UsernameGenerator.SanitizeUsername(v!)); }
+                            if (hasValue)
+                            {
+                                taken.Add(v!);
+                                if (isUsername) taken.Add(UsernameGenerator.SanitizeUsername(v!));
+                            }
                         }
                         else decisions[p] = new Decision(DecisionKind.Generate, null);
                         break;
@@ -525,9 +536,21 @@ public sealed partial class MainViewModel : ObservableObject
                         if (selected)
                         {
                             decisions[p] = new Decision(DecisionKind.Keep, v);
-                            if (hasValue) { taken.Add(v!); if (isUsername) taken.Add(UsernameGenerator.SanitizeUsername(v!)); }
+                            if (hasValue)
+                            {
+                                taken.Add(v!);
+                                if (isUsername) taken.Add(UsernameGenerator.SanitizeUsername(v!));
+                            }
                         }
                         else decisions[p] = new Decision(DecisionKind.Drop, null);
+                        break;
+                    default:
+                        decisions[p] = new Decision(DecisionKind.Keep, v);
+                        if (hasValue)
+                        {
+                            taken.Add(v!);
+                            if (isUsername) taken.Add(UsernameGenerator.SanitizeUsername(v!));
+                        }
                         break;
                 }
             }
@@ -547,7 +570,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
         }
 
-        // Phase 2 — generate for records flagged Generate.
+        // Phase 2 — generate for the Generate bucket
         foreach (var p in stage.InputRecords)
         {
             if (decisions[p].Kind != DecisionKind.Generate) continue;
@@ -557,7 +580,7 @@ public sealed partial class MainViewModel : ObservableObject
             decisions[p] = new Decision(DecisionKind.Keep, gen);
         }
 
-        // Phase 3 — emit survivors with updated field.
+        // Phase 3 — emit survivors with updated field
         var output = new List<PersonRecord>(stage.InputRecords.Count);
         foreach (var p in stage.InputRecords)
         {
@@ -595,8 +618,6 @@ public sealed partial class MainViewModel : ObservableObject
         return "";
     }
 
-    // ---------------- Previews ----------------
-
     private void RefreshPreviews()
     {
         foreach (var s in AllStages) UpdateStagePreviews(s);
@@ -607,11 +628,12 @@ public sealed partial class MainViewModel : ObservableObject
         if (!stage.IsUnlocked) return;
 
         var isDropStage = stage.Kind is DuplicateKind.PersonIdentity or DuplicateKind.Lkid;
-        HashSet<PersonRecord>? outputSet = isDropStage
-            ? new HashSet<PersonRecord>(stage.OutputRecords, RefEq.Instance) : null;
-        Dictionary<string, PersonRecord>? outputByLkid = isDropStage
+        HashSet<Guid>? outputIds = isDropStage
+            ? new HashSet<Guid>(stage.OutputRecords.Select(r => r.RecordId))
+            : null;
+        Dictionary<Guid, PersonRecord>? outputById = isDropStage
             ? null
-            : stage.OutputRecords.ToDictionary(r => r.Lkid, StringComparer.OrdinalIgnoreCase);
+            : stage.OutputRecords.ToDictionary(r => r.RecordId);
 
         foreach (var g in stage.Pager.AllGroups)
         {
@@ -624,12 +646,12 @@ public sealed partial class MainViewModel : ObservableObject
 
                     if (isDropStage)
                     {
-                        return outputSet!.Contains(r)
+                        return outputIds!.Contains(r.RecordId)
                             ? ("→ behalten", DuplicateGroup.BrushKeep())
                             : ("→ verworfen (Zeile entfernt)", DuplicateGroup.BrushDrop());
                     }
 
-                    if (!outputByLkid!.TryGetValue(r.Lkid, out var outRec))
+                    if (!outputById!.TryGetValue(r.RecordId, out var outRec))
                         return ("→ verworfen (Zeile entfernt)", DuplicateGroup.BrushDrop());
 
                     var original = GetValue(g.Kind, r);
@@ -652,92 +674,85 @@ public sealed partial class MainViewModel : ObservableObject
         _ => null,
     };
 
-    // ---------------- Output & download ----------------
+    private List<PersonRecord> BuildResolvedOutput() => AllStages[^1].OutputRecords;
 
-    private List<PersonRecord> BuildResolvedOutput()
-        => AllStages[^1].OutputRecords;
+    public async Task DownloadAsync(IStorageProvider storageProvider)
+    {
+        if (Result is null) return;
 
-        public async Task DownloadAsync(IStorageProvider storageProvider)
+        if (NeedsResolution)
         {
-            if (Result is null) return;
-
-            if (NeedsResolution)
-            {
-                ShowDuplicateDialog = true;
-                Status = $"Bitte zuerst alle Konflikte klären ({UnresolvedGroups} offen).";
-                return;
-            }
-
-            var resolved = BuildResolvedOutput();
-
-            var file = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-            {
-                Title = "KIDS-Export speichern",
-                SuggestedFileName = $"kids-export-{DateTime.Now:yyyy-MM-dd}",
-                DefaultExtension = "xlsx",
-                ShowOverwritePrompt = true,
-                FileTypeChoices = new[]
-                {
-                    new FilePickerFileType("Excel-Arbeitsmappe (*.xlsx)") { Patterns = new[] { "*.xlsx" } },
-                    new FilePickerFileType("CSV, UTF-8, Semikolon (*.csv)") { Patterns = new[] { "*.csv" } },
-                },
-            });
-            if (file is null) return;
-
-            var fileName = string.IsNullOrWhiteSpace(file.Name) ? "kids-export" : file.Name;
-            var isCsv = fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
-
-            try
-            {
-                await using (var stream = await file.OpenWriteAsync())
-                {
-                    stream.SetLength(0);
-                    if (isCsv)
-                    {
-                        // CSV path (UTF-8 mit BOM). Kept as a fallback for users
-                        // whose Excel opens semicolon-delimited UTF-8 correctly.
-                        var csv = CsvWriter.Build(resolved);
-                        var utf8WithBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
-                        await using var writer = new StreamWriter(stream, utf8WithBom);
-                        await writer.WriteAsync(csv);
-                    }
-                    else
-                    {
-                        // XLSX path — encoding- and delimiter-agnostic; opens
-                        // correctly in every Excel / Numbers / LibreOffice install.
-                        var bytes = XlsxWriter.Build(resolved);
-                        await stream.WriteAsync(bytes);
-                    }
-                }
-
-                var warnLines = new List<string>(Result.Warnings);
-                if (HasDuplicates)
-                    warnLines.Add($"Konflikte aufgelöst: {ResolvedGroups}/{TotalDuplicateGroups} Gruppen.");
-                if (GenerateEmptyUsernames || GenerateEmptyAppleIds || GenerateEmptySystemEmails)
-                {
-                    var flags = new List<string>();
-                    if (GenerateEmptyUsernames) flags.Add($"Benutzername ({EmptyUsernameCount})");
-                    if (GenerateEmptyAppleIds) flags.Add($"Apple ID ({EmptyAppleIdCount})");
-                    if (GenerateEmptySystemEmails) flags.Add($"System-E-Mail ({EmptySystemEmailCount})");
-                    warnLines.Add("Leere Felder generiert: " + string.Join(", ", flags));
-                }
-                if (warnLines.Count > 0)
-                {
-                    var dir = Path.GetDirectoryName(file.Path.LocalPath) ?? ".";
-                    var warnPath = Path.Combine(dir,
-                        Path.GetFileNameWithoutExtension(file.Name) + "-warnings.txt");
-                    await File.WriteAllLinesAsync(warnPath, warnLines);
-                }
-
-                Status = $"Gespeichert: {fileName} ({resolved.Count} Zeilen)";
-                IsError = false;
-            }
-            catch (Exception ex)
-            {
-                IsError = true;
-                Status = "Speichern fehlgeschlagen: " + ex.Message;
-            }
+            ShowDuplicateDialog = true;
+            Status = $"Bitte zuerst alle Konflikte klären ({UnresolvedGroups} offen).";
+            return;
         }
+
+        var resolved = BuildResolvedOutput();
+
+        var file = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+          Title = "KIDS-Export speichern",
+          SuggestedFileName = $"kids-export-{DateTime.Now:yyyy-MM-dd}",
+          DefaultExtension = "xlsx",
+          ShowOverwritePrompt = true,
+          FileTypeChoices = new[]
+            {
+                new FilePickerFileType("Excel-Arbeitsmappe (*.xlsx)") { Patterns = new[] { "*.xlsx" } },
+                new FilePickerFileType("CSV, UTF-8, Semikolon (*.csv)") { Patterns = new[] { "*.csv" } },
+            },
+        });
+        if (file is null) return;
+
+        var fileName = string.IsNullOrWhiteSpace(file.Name) ? "kids-export" : file.Name;
+        var isCsv = fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
+
+        try
+        {
+            await using (var stream = await file.OpenWriteAsync())
+            {
+                stream.SetLength(0);
+                if (isCsv)
+                {
+                    var csv = CsvWriter.Build(resolved);
+                    var utf8WithBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+                    await using var writer = new StreamWriter(stream, utf8WithBom);
+                    await writer.WriteAsync(csv);
+                }
+                else
+                {
+                    var bytes = XlsxWriter.Build(resolved);
+                    await stream.WriteAsync(bytes);
+                }
+            }
+
+            var warnLines = new List<string>(Result.Warnings);
+            if (HasDuplicates)
+                warnLines.Add($"Konflikte aufgelöst: {ResolvedGroups}/{TotalDuplicateGroups} Gruppen.");
+            if (GenerateEmptyUsernames || GenerateEmptyAppleIds || GenerateEmptySystemEmails)
+            {
+                var flags = new List<string>();
+                if (GenerateEmptyUsernames) flags.Add($"Benutzername ({EmptyUsernameCount})");
+                if (GenerateEmptyAppleIds) flags.Add($"Apple ID ({EmptyAppleIdCount})");
+                if (GenerateEmptySystemEmails) flags.Add($"System-E-Mail ({EmptySystemEmailCount})");
+                warnLines.Add("Leere Felder generiert: " + string.Join(", ", flags));
+            }
+            if (warnLines.Count > 0)
+            {
+                var dir = Path.GetDirectoryName(file.Path.LocalPath) ?? ".";
+                var warnPath = Path.Combine(dir,
+                    Path.GetFileNameWithoutExtension(file.Name) + "-warnings.txt");
+                await File.WriteAllLinesAsync(warnPath, warnLines);
+            }
+
+            Status = $"Gespeichert: {fileName} ({resolved.Count} Zeilen)";
+            IsError = false;
+        }
+        catch (Exception ex)
+        {
+            IsError = true;
+            Status = "Speichern fehlgeschlagen: " + ex.Message;
+        }
+    }
 
     private void RaiseAllCounts()
     {

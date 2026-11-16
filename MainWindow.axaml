@@ -44,13 +44,13 @@
 
     <Border Grid.Row="3" IsVisible="{Binding HasPreview}" Margin="0,12,0,0"
             BorderBrush="#d9d9d9" BorderThickness="1" CornerRadius="4">
-      <DataGrid ItemsSource="{Binding PreviewRows}"
-                AutoGenerateColumns="False"
-                CanUserReorderColumns="False" CanUserResizeColumns="True"
-                IsReadOnly="True"
-                GridLinesVisibility="Horizontal" HeadersVisibility="Column"
-                BorderThickness="0" FontSize="12"
-                HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+        <DataGrid ItemsSource="{Binding PreviewRows}"
+                  AutoGenerateColumns="False"
+                  CanUserReorderColumns="False" CanUserResizeColumns="True"
+                  IsReadOnly="True"
+                  GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                  BorderThickness="0" FontSize="14"
+                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
         <DataGrid.Columns>
           <DataGridTextColumn Header="SID"           Binding="{Binding Sid}" Width="60" />
           <DataGridTextColumn Header="SOID"          Binding="{Binding Soid}" Width="50" />

@@ -20,15 +20,10 @@ public enum ResolutionMode
 
 public sealed partial class DuplicateCandidate : ObservableObject
 {
-    private readonly DuplicateGroup? _group;
-    private bool _isSelected;
-
     public DuplicateCandidate(DuplicateGroup group, PersonRecord record)
     {
-        _group = group;
         Record = record;
     }
-
     public DuplicateCandidate() { }
 
     public PersonRecord Record { get; init; } = new();
@@ -37,34 +32,22 @@ public sealed partial class DuplicateCandidate : ObservableObject
     public string DisplayName => $"{Record.LastName}, {Record.FirstName}";
     public string DobDisplay => string.IsNullOrWhiteSpace(Record.DateOfBirth) ? "—" : Record.DateOfBirth!;
     public string SchoolDisplay => string.IsNullOrWhiteSpace(Record.SchoolName) ? "—" : Record.SchoolName!;
-    public string ClassDisplay => string.IsNullOrWhiteSpace(Record.ClassName) ? "—" : Record.ClassName!;
-    public string RoleDisplay => Record.Roles.Count == 0 ? "—" : string.Join(", ", Record.Roles);
-    public string SourceFileDisplay => string.IsNullOrWhiteSpace(Record.SourceFile) ? "—" : Record.SourceFile!;
-    public string RadioGroupName => _group?.RadioGroupName ?? "";
+    public string StufeDisplay => string.IsNullOrWhiteSpace(Record.Grade) ? "—" : Record.Grade!;
+
+    public string ClassDisplay =>
+        string.IsNullOrWhiteSpace(Record.ClassName)
+            ? "—"
+            : Record.ClassName!.Replace('|', ',');
+
+    public string ClassDisplayShort =>
+        ClassDisplay.Length > 32 ? ClassDisplay[..29] + "…" : ClassDisplay;
+
+    public string SourceFileDisplay =>
+        string.IsNullOrWhiteSpace(Record.SourceFile) ? "—" : Record.SourceFile!;
 
     [ObservableProperty] private string _currentValue = "";
     [ObservableProperty] private string _previewText = "→ noch nicht entschieden";
     [ObservableProperty] private IBrush? _previewBrush;
-
-    public bool IsSelected
-    {
-        get => _isSelected;
-        set
-        {
-            if (_isSelected == value) return;
-            _isSelected = value;
-            OnPropertyChanged(nameof(IsSelected));
-            if (value && _group is not null && !_group.SuppressSelectionUpdate)
-                _group.SelectByUser(this);
-        }
-    }
-
-    internal void SetSelectedSilent(bool value)
-    {
-        if (_isSelected == value) return;
-        _isSelected = value;
-        OnPropertyChanged(nameof(IsSelected));
-    }
 }
 
 public sealed partial class DuplicateGroup : ObservableObject
@@ -78,16 +61,11 @@ public sealed partial class DuplicateGroup : ObservableObject
     public DuplicateKind Kind { get; init; }
     public ObservableCollection<DuplicateCandidate> Candidates { get; } = new();
 
-    public string RadioGroupName => $"{Kind}_{Key}";
-
     internal bool SuppressSelectionUpdate;
-
-    public bool IsValueType => Kind is DuplicateKind.Username
-                                      or DuplicateKind.AppleId
-                                      or DuplicateKind.SystemEmail;
 
     public bool IsLkidOnly => Kind == DuplicateKind.Lkid;
     public bool IsPersonIdentity => Kind == DuplicateKind.PersonIdentity;
+    public bool IsValueType => Kind is DuplicateKind.Username or DuplicateKind.AppleId or DuplicateKind.SystemEmail;
 
     public string TitleText => Kind switch
     {
@@ -101,128 +79,141 @@ public sealed partial class DuplicateGroup : ObservableObject
 
     public string HelpText => Kind switch
     {
-        DuplicateKind.Lkid           => "Mehrere Einträge mit derselben LKID. Wähle eine Zeile zum Behalten oder verwirf alle.",
-        DuplicateKind.Username       => "Mehrere Einträge verwenden denselben Benutzernamen. Wähle einen zum Behalten; für die anderen kannst du generieren, leeren oder die Zeilen ganz verwerfen.",
-        DuplicateKind.AppleId        => "Mehrere Einträge verwenden dieselbe Apple ID. Wähle einen zum Behalten; für die anderen kannst du generieren, leeren oder die Zeilen ganz verwerfen.",
-        DuplicateKind.SystemEmail    => "Mehrere Einträge verwenden dieselbe System-E-Mail. Wähle einen zum Behalten; für die anderen kannst du generieren, leeren oder die Zeilen ganz verwerfen.",
-        DuplicateKind.PersonIdentity => "Gleicher Name und Geburtsdatum, aber verschiedene LKIDs. Wähle eine Zeile zum Zusammenführen, oder behalte alle (verschiedene Personen).",
-        _                            => "",
+        DuplicateKind.Lkid           => "Mehrere Einträge mit derselben LKID. Wähle eine Zeile zum Behalten; alle anderen Zeilen mit dieser LKID werden verworfen.",
+        DuplicateKind.PersonIdentity => "Gleicher Name und Geburtsdatum, aber verschiedene LKIDs. Wähle eine Zeile zum Zusammenführen, oder behalte alle als verschiedene Personen.",
+        _                            => "Wähle eine Zeile zum Behalten. Für die übrigen Einträge kannst du anschließend festlegen, ob das Feld geleert, neu generiert oder die ganze Zeile verworfen werden soll.",
     };
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsResolved))]
-    [NotifyPropertyChangedFor(nameof(StatusText))]
-    [NotifyPropertyChangedFor(nameof(NeedsCandidate))]
-    [NotifyPropertyChangedFor(nameof(IsKeepMode))]
-    [NotifyPropertyChangedFor(nameof(IsBulkMode))]
+    // ---- Mode (manual property, bypasses [ObservableProperty] so we control notifications) ----
     private ResolutionMode _mode = ResolutionMode.Unresolved;
+    public ResolutionMode Mode
+    {
+        get => _mode;
+        set
+        {
+            if (_mode == value) return;
+            _mode = value;
+            OnPropertyChanged(nameof(Mode));
 
-    [ObservableProperty] private DuplicateCandidate? _selectedCandidate;
+            if (value is ResolutionMode.GenerateAll or ResolutionMode.DiscardAll or ResolutionMode.KeepAll
+                && _selectedCandidate is not null)
+            {
+                SuppressSelectionUpdate = true;
+                try { SelectedCandidate = null; }
+                finally { SuppressSelectionUpdate = false; }
+            }
+
+            RaiseModeDependents();
+        }
+    }
+
+    // ---- SelectedCandidate (manual property, sets default Mode when user picks) ----
+    private DuplicateCandidate? _selectedCandidate;
+    public DuplicateCandidate? SelectedCandidate
+    {
+        get => _selectedCandidate;
+        set
+        {
+            if (ReferenceEquals(_selectedCandidate, value)) return;
+            _selectedCandidate = value;
+            OnPropertyChanged(nameof(SelectedCandidate));
+
+            if (!SuppressSelectionUpdate && value is not null)
+            {
+                if (!IsKeepMode)
+                {
+                    _mode = ResolutionMode.KeepAndBlank;
+                    OnPropertyChanged(nameof(Mode));
+                }
+                RaiseModeDependents();
+            }
+        }
+    }
+
+    private void RaiseModeDependents()
+    {
+        OnPropertyChanged(nameof(IsModeKeepAndBlank));
+        OnPropertyChanged(nameof(IsModeKeepAndGenerate));
+        OnPropertyChanged(nameof(IsModeKeepAndDisregard));
+        OnPropertyChanged(nameof(IsKeepMode));
+        OnPropertyChanged(nameof(IsBulkMode));
+        OnPropertyChanged(nameof(NeedsCandidate));
+        OnPropertyChanged(nameof(IsResolved));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(KeepRecord));
+    }
 
     public bool NeedsCandidate =>
-        Mode is ResolutionMode.KeepAndBlank
-             or ResolutionMode.KeepAndGenerate
-             or ResolutionMode.KeepAndDisregard;
+        _mode is ResolutionMode.KeepAndBlank
+               or ResolutionMode.KeepAndGenerate
+               or ResolutionMode.KeepAndDisregard;
 
     public bool IsKeepMode =>
-        Mode is ResolutionMode.KeepAndBlank
-             or ResolutionMode.KeepAndGenerate
-             or ResolutionMode.KeepAndDisregard;
+        _mode is ResolutionMode.KeepAndBlank
+               or ResolutionMode.KeepAndGenerate
+               or ResolutionMode.KeepAndDisregard;
 
     public bool IsBulkMode =>
-        Mode is ResolutionMode.GenerateAll or ResolutionMode.DiscardAll or ResolutionMode.KeepAll;
+        _mode is ResolutionMode.GenerateAll or ResolutionMode.DiscardAll or ResolutionMode.KeepAll;
 
-    public bool IsResolved => Mode switch
+    public bool IsResolved => _mode switch
     {
         ResolutionMode.Unresolved => false,
         ResolutionMode.KeepAndBlank
             or ResolutionMode.KeepAndGenerate
-            or ResolutionMode.KeepAndDisregard => SelectedCandidate is not null,
+            or ResolutionMode.KeepAndDisregard => _selectedCandidate is not null,
         _ => true,
     };
 
     public PersonRecord? KeepRecord =>
-        Mode is ResolutionMode.KeepAndBlank
-             or ResolutionMode.KeepAndGenerate
-             or ResolutionMode.KeepAndDisregard
-            ? SelectedCandidate?.Record : null;
+        IsKeepMode ? _selectedCandidate?.Record : null;
 
-    public string StatusText => Mode switch
+    public string StatusText => _mode switch
     {
-        ResolutionMode.Unresolved       => "offen",
-        ResolutionMode.KeepAndBlank     => IsLkidOnly || IsPersonIdentity
-                                             ? "ausgewählte Zeile bleibt, andere werden verworfen"
-                                             : "ausgewählte Zeile bleibt, andere Felder werden geleert",
-        ResolutionMode.KeepAndGenerate  => "ausgewählter bleibt, andere werden generiert",
+        ResolutionMode.Unresolved => "offen",
+
+        ResolutionMode.KeepAndBlank => (IsLkidOnly || IsPersonIdentity)
+            ? "ausgewählte Zeile bleibt, andere werden verworfen"
+            : "ausgewählte Zeile bleibt, andere Felder werden geleert",
+
+        ResolutionMode.KeepAndGenerate => (IsLkidOnly || IsPersonIdentity)
+            ? "ausgewählte Zeile bleibt, andere werden verworfen"
+            : "ausgewählter bleibt, andere werden generiert",
+
         ResolutionMode.KeepAndDisregard => "ausgewählter bleibt, andere Zeilen werden verworfen",
-        ResolutionMode.GenerateAll      => "alle werden neu generiert",
-        ResolutionMode.DiscardAll       => IsLkidOnly
-                                             ? "alle Zeilen werden verworfen"
-                                             : "Feld wird bei allen geleert",
-        ResolutionMode.KeepAll          => "alle bleiben (verschiedene Personen)",
+
+        ResolutionMode.GenerateAll => (IsLkidOnly || IsPersonIdentity)
+            ? "alle Zeilen werden verworfen"
+            : "alle werden neu generiert",
+
+        ResolutionMode.DiscardAll => (IsLkidOnly || IsPersonIdentity)
+            ? "alle Zeilen werden verworfen"
+            : "Feld wird bei allen geleert",
+
+        ResolutionMode.KeepAll => "alle bleiben (verschiedene Personen)",
         _ => "",
     };
 
+    // ---- Bool bridges for RadioButton GroupName bindings on the sub-options ----
     public bool IsModeKeepAndBlank
     {
-        get => Mode == ResolutionMode.KeepAndBlank;
+        get => _mode == ResolutionMode.KeepAndBlank;
         set { if (value) Mode = ResolutionMode.KeepAndBlank; }
     }
     public bool IsModeKeepAndGenerate
     {
-        get => Mode == ResolutionMode.KeepAndGenerate;
+        get => _mode == ResolutionMode.KeepAndGenerate;
         set { if (value) Mode = ResolutionMode.KeepAndGenerate; }
     }
     public bool IsModeKeepAndDisregard
     {
-        get => Mode == ResolutionMode.KeepAndDisregard;
+        get => _mode == ResolutionMode.KeepAndDisregard;
         set { if (value) Mode = ResolutionMode.KeepAndDisregard; }
-    }
-
-    partial void OnModeChanged(ResolutionMode value)
-    {
-        if (value is ResolutionMode.GenerateAll or ResolutionMode.DiscardAll or ResolutionMode.KeepAll)
-        {
-            var old = SelectedCandidate;
-            if (old is not null)
-            {
-                SuppressSelectionUpdate = true;
-                SelectedCandidate = null;
-                SuppressSelectionUpdate = false;
-                old.SetSelectedSilent(false);
-            }
-        }
-        OnPropertyChanged(nameof(IsModeKeepAndBlank));
-        OnPropertyChanged(nameof(IsModeKeepAndGenerate));
-        OnPropertyChanged(nameof(IsModeKeepAndDisregard));
-    }
-
-    public void SelectByUser(DuplicateCandidate c)
-    {
-        if (SelectedCandidate == c)
-        {
-            if (!IsKeepMode) Mode = ResolutionMode.KeepAndGenerate;
-            return;
-        }
-        var old = SelectedCandidate;
-        SuppressSelectionUpdate = true;
-        SelectedCandidate = c;
-        SuppressSelectionUpdate = false;
-        old?.SetSelectedSilent(false);
-        c.SetSelectedSilent(true);
-
-        if (!IsKeepMode)
-            Mode = ResolutionMode.KeepAndGenerate;
-        else
-        {
-            OnPropertyChanged(nameof(IsResolved));
-            OnPropertyChanged(nameof(StatusText));
-        }
     }
 
     public DuplicateGroup() { }
 
-    public DuplicateGroup(string key, DuplicateKind kind, IEnumerable<PersonRecord> records)
+    public DuplicateGroup(string key, DuplicateKind kind, IEnumerable<PersonRecord> records) : this()
     {
         Key = key;
         Kind = kind;
@@ -233,7 +224,7 @@ public sealed partial class DuplicateGroup : ObservableObject
     public void AcceptDefault()
     {
         if (Candidates.Count == 0) return;
-        SelectByUser(Candidates[0]);
+        SelectedCandidate = Candidates[0];
     }
 
     [RelayCommand] private void SetGenerateAll() => Mode = ResolutionMode.GenerateAll;
