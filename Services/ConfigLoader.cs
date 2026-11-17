@@ -115,6 +115,7 @@ public static class ConfigLoader
         {
             new() { Field = "sid",           DisplayName = "SID",           ExportName = "SID",           ExportEnabled = true, PreferredWidth = 60,  IsCore = true },
             new() { Field = "soid",          DisplayName = "SOID",          ExportName = "SOID",          ExportEnabled = true, PreferredWidth = 50,  IsCore = true },
+            new() { Field = "sdid",          DisplayName = "SDID",          ExportName = "SDID",          ExportEnabled = true, PreferredWidth = 100, IsCore = true },
             new() { Field = "school_name",   DisplayName = "Schulname",     ExportName = "Schulname",     ExportEnabled = true, PreferredWidth = 200, IsCore = true },
             new() { Field = "school_type",   DisplayName = "Schultyp",      ExportName = "Schultyp",      ExportEnabled = true, PreferredWidth = 110, IsCore = true },
             new() { Field = "class",         DisplayName = "Klasse",        ExportName = "Klasse",        ExportEnabled = true, PreferredWidth = 220, IsCore = true },

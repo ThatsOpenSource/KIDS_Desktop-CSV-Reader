@@ -20,12 +20,7 @@ public static class CsvWriter
             sb.Append(string.Join(delim, columns.Select(c => SanitizeEntry(c.ExportName, delim))))
               .Append("\r\n");
 
-        foreach (var p in persons
-            .OrderBy(p => p.SchoolId ?? "", StringComparer.Ordinal)
-            .ThenBy(p => p.IsStudent ? 0 : 1)
-            .ThenBy(p => p.ClassName ?? "", StringComparer.Ordinal)
-            .ThenBy(p => p.LastName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(p => p.FirstName, StringComparer.OrdinalIgnoreCase))
+        foreach (var p in persons)
         {
             var values = new List<string>(columns.Count);
             foreach (var col in columns)
@@ -41,6 +36,7 @@ public static class CsvWriter
         "sid"           => p.SchoolId ?? "",
         "sgid"          => p.SgId ?? "",
         "soid"          => p.SoId ?? "",
+        "sdid"          => p.SdId ?? "",
         "school_name"   => p.SchoolName ?? "",
         "school_type"   => p.SchoolType ?? "",
         "class"         => string.Join(cfg.Output.ListSeparator, BuildClassLabels(p, cfg)),
@@ -86,13 +82,6 @@ public static class CsvWriter
             yield return $"{soid}-{r}";
     }
 
-    /// <summary>
-    /// Flags column content. When <c>output.flags_include_roles</c> is true
-    /// (default), the role ids (Schueler, Lehrer, Sonstige) are prepended
-    /// before the flag ids. This is a temporary convenience for the
-    /// downstream system — turn it off in the config when the web app
-    /// carries roles in their own column.
-    /// </summary>
     public static IEnumerable<string> BuildFlagsColumn(PersonRecord p, AppConfig? config = null)
     {
         config ??= ConfigStore.Current;
@@ -112,11 +101,6 @@ public static class CsvWriter
         return iso;
     }
 
-    /// <summary>
-    /// Strips any character Windows forbids in a folder name. Applied to
-    /// class names before they are emitted so downstream tools can safely
-    /// use them as directory names.
-    /// </summary>
     public static string SanitizeClassName(string name, AppConfig? config = null)
     {
         config ??= ConfigStore.Current;
@@ -126,17 +110,10 @@ public static class CsvWriter
         return string.IsNullOrEmpty(result) ? "_" : result;
     }
 
-    /// <summary>
-    /// Removes quotation marks and any occurrences of the CSV delimiter
-    /// inside a cell, since the export is unquoted.
-    /// </summary>
     private static string SanitizeEntry(string v, string delimiter)
     {
         if (string.IsNullOrEmpty(v)) return v;
-        var s = v
-            .Replace("\"", "")
-            .Replace("\r", " ")
-            .Replace("\n", " ");
+        var s = v.Replace("\"", "").Replace("\r", " ").Replace("\n", " ");
         if (!string.IsNullOrEmpty(delimiter))
             s = s.Replace(delimiter, ",");
         return s;

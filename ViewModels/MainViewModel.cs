@@ -771,7 +771,31 @@ public sealed partial class MainViewModel : ObservableObject
 
             output.Add(p with { AppleId = appleId, SystemEmail = sysEmail });
         }
-        return output;
+
+        return SortRecords(output);
+    }
+
+    /// <summary>
+    /// Sort order shared by preview and export: school → role → grade (numeric)
+    /// → class → name. "Role" places students first, then teachers, then others.
+    /// Grade is parsed as an integer so "10" sorts after "9" rather than before
+    /// (default string sort would do the wrong thing).
+    /// </summary>
+    private static List<PersonRecord> SortRecords(IEnumerable<PersonRecord> records) =>
+        records
+            .OrderBy(p => p.SchoolId ?? "", StringComparer.Ordinal)
+            .ThenBy(p => p.IsStudent ? 0 : (p.IsTeacher ? 1 : 2))
+            .ThenBy(p => ParseGrade(p.Grade))
+            .ThenBy(p => p.ClassName ?? "", StringComparer.OrdinalIgnoreCase)
+            .ThenBy(p => p.LastName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(p => p.FirstName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static int ParseGrade(string? grade)
+    {
+        if (string.IsNullOrWhiteSpace(grade)) return 999;
+        var m = System.Text.RegularExpressions.Regex.Match(grade, @"^\d+");
+        return m.Success && int.TryParse(m.Value, out var n) ? n : 999;
     }
 
     /// <summary>

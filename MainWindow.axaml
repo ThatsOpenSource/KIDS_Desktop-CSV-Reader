@@ -48,56 +48,57 @@
     <!-- Preview table -->
     <Border Grid.Row="3" IsVisible="{Binding HasPreview}" Margin="0,12,0,0"
             BorderBrush="#d9d9d9" BorderThickness="1" CornerRadius="4">
-      <DataGrid ItemsSource="{Binding PreviewRows}"
-                AutoGenerateColumns="False"
-                CanUserReorderColumns="False" CanUserResizeColumns="True"
-                IsReadOnly="True"
-                GridLinesVisibility="Horizontal" HeadersVisibility="Column"
-                BorderThickness="0" FontSize="14"
-                HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-        <DataGrid.Columns>
-          <DataGridTemplateColumn Header="⚠L" Width="26">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate><TextBlock Text="{Binding LkidDupMarker}" Foreground="#b8860b"
-                                       HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="⚠U" Width="26">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate><TextBlock Text="{Binding UsernameDupMarker}" Foreground="#b8860b"
-                                       HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="⚠A" Width="26">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate><TextBlock Text="{Binding AppleIdDupMarker}" Foreground="#b8860b"
-                                       HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="⚠S" Width="26">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate><TextBlock Text="{Binding SystemEmailDupMarker}" Foreground="#b8860b"
-                                       HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTextColumn Header="SID"           Binding="{Binding Sid}" Width="60" />
-          <DataGridTextColumn Header="SOID"          Binding="{Binding Soid}" Width="50" />
-          <DataGridTextColumn Header="Schulname"     Binding="{Binding SchoolName}" Width="200" />
-          <DataGridTextColumn Header="Schultyp"      Binding="{Binding SchoolType}" Width="110" />
-          <DataGridTextColumn Header="Klasse"        Binding="{Binding ClassList}" Width="220" />
-          <DataGridTextColumn Header="Stufe"         Binding="{Binding Grade}" Width="55" />
-          <DataGridTextColumn Header="LKID"          Binding="{Binding Lkid}" Width="150" />
-          <DataGridTextColumn Header="Name"          Binding="{Binding LastName}" Width="140" />
-          <DataGridTextColumn Header="Vorname"       Binding="{Binding FirstName}" Width="120" />
-          <DataGridTextColumn Header="Geburtsdatum"  Binding="{Binding Dob}" Width="110" />
-          <DataGridTextColumn Header="Benutzername"  Binding="{Binding Username}" Width="130" />
-          <DataGridTextColumn Header="Apple ID"      Binding="{Binding AppleId}" Width="220" />
-          <DataGridTextColumn Header="E-Mail"        Binding="{Binding Email}" Width="200" />
-          <DataGridTextColumn Header="System-E-Mail" Binding="{Binding SystemEmail}" Width="220" />
-          <DataGridTextColumn Header="vceType"       Binding="{Binding VceType}" Width="80" />
-          <DataGridTextColumn Header="Rolle"         Binding="{Binding RoleList}" Width="140" />
-          <DataGridTextColumn Header="Flags"         Binding="{Binding FlagList}" Width="160" />
-        </DataGrid.Columns>
+      <DataGrid
+        ItemsSource="{Binding PreviewRows}"
+        AutoGenerateColumns="False"
+        CanUserReorderColumns="False" CanUserResizeColumns="True"
+        IsReadOnly="True"
+        GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+        BorderThickness="0" FontSize="14"
+        HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="⚠L" Width="26">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate><TextBlock Text="{Binding LkidDupMarker}" Foreground="#b8860b"
+                                          HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="⚠U" Width="26">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate><TextBlock Text="{Binding UsernameDupMarker}" Foreground="#b8860b"
+                                          HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="⚠A" Width="26">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate><TextBlock Text="{Binding AppleIdDupMarker}" Foreground="#b8860b"
+                                          HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="⚠S" Width="26">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate><TextBlock Text="{Binding SystemEmailDupMarker}" Foreground="#b8860b"
+                                          HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="SID"           Binding="{Binding Sid}" Width="60" />
+            <DataGridTextColumn Header="SOID"          Binding="{Binding Soid}" Width="50" />
+            <DataGridTextColumn Header="SDID"          Binding="{Binding Sdid}" Width="100" />
+            <DataGridTextColumn Header="Schulname"     Binding="{Binding SchoolName}" Width="200" />
+            <DataGridTextColumn Header="Schultyp"      Binding="{Binding SchoolType}" Width="110" />
+            <DataGridTextColumn Header="Klasse"        Binding="{Binding ClassList}" Width="220" />
+            <DataGridTextColumn Header="Stufe"         Binding="{Binding Grade}" Width="55" />
+            <DataGridTextColumn Header="LKID"          Binding="{Binding Lkid}" Width="150" />
+            <DataGridTextColumn Header="Name"          Binding="{Binding LastName}" Width="140" />
+            <DataGridTextColumn Header="Vorname"       Binding="{Binding FirstName}" Width="120" />
+            <DataGridTextColumn Header="Geburtsdatum"  Binding="{Binding Dob}" Width="110" />
+            <DataGridTextColumn Header="Benutzername"  Binding="{Binding Username}" Width="130" />
+            <DataGridTextColumn Header="Apple ID"      Binding="{Binding AppleId}" Width="220" />
+            <DataGridTextColumn Header="E-Mail"        Binding="{Binding Email}" Width="200" />
+            <DataGridTextColumn Header="System-E-Mail" Binding="{Binding SystemEmail}" Width="220" />
+            <DataGridTextColumn Header="Rolle"         Binding="{Binding RoleList}" Width="140" />
+            <DataGridTextColumn Header="Flags"         Binding="{Binding FlagList}" Width="160" />
+          </DataGrid.Columns>
       </DataGrid>
     </Border>
 

@@ -41,12 +41,7 @@ public static class XlsxWriter
             rowIdx++;
         }
 
-        foreach (var p in persons
-            .OrderBy(p => p.SchoolId ?? "", StringComparer.Ordinal)
-            .ThenBy(p => p.IsStudent ? 0 : 1)
-            .ThenBy(p => p.ClassName ?? "", StringComparer.Ordinal)
-            .ThenBy(p => p.LastName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(p => p.FirstName, StringComparer.OrdinalIgnoreCase))
+        foreach (var p in persons)
         {
             sb.Append("<row>");
             for (int c = 0; c < columns.Count; c++)
@@ -68,6 +63,7 @@ public static class XlsxWriter
         "sid"           => p.SchoolId ?? "",
         "sgid"          => p.SgId ?? "",
         "soid"          => p.SoId ?? "",
+        "sdid"          => p.SdId ?? "",
         "school_name"   => p.SchoolName ?? "",
         "school_type"   => p.SchoolType ?? "",
         "class"         => string.Join(cfg.Output.ListSeparator, CsvWriter.BuildClassLabels(p, cfg)),
@@ -82,7 +78,7 @@ public static class XlsxWriter
         "system_email"  => p.SystemEmail ?? "",
         "vce_type"      => p.VceType?.ToString() ?? "",
         "roles"         => string.Join(cfg.Output.ListSeparator, CsvWriter.BuildRoleLabels(p, cfg)),
-        "flags"         => string.Join(cfg.Output.ListSeparator, CsvWriter.BuildFlagsColumn(p)),
+        "flags"         => string.Join(cfg.Output.ListSeparator, CsvWriter.BuildFlagsColumn(p, cfg)),
         _               => "",
     };
 

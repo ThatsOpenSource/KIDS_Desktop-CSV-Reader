@@ -136,7 +136,6 @@ public static class CsvInputParser
             .Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
     }
 
-    /// <summary>Looks up a flag alias in the config and returns its data_id.</summary>
     private static string? ResolveFlag(string raw, AppConfig config)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
@@ -244,6 +243,7 @@ public static class CsvInputParser
             SchoolId = schulnummer,
             SgId = null,
             SoId = kzSnr,
+            SdId = string.IsNullOrWhiteSpace(kzOu) ? null : kzOu,
             SchoolName = schule,
             SchoolType = ResolveSchoolType(kzOu, schule),
             SourceGuid = lkid,
@@ -299,6 +299,7 @@ public static class CsvInputParser
             SchoolId = string.IsNullOrWhiteSpace(G("SID")) ? null : G("SID"),
             SoId = string.IsNullOrWhiteSpace(soid) ? null : soid,
             SgId = string.IsNullOrWhiteSpace(G("SGID")) ? null : G("SGID"),
+            SdId = string.IsNullOrWhiteSpace(G("SDID")) ? null : G("SDID"),
             SchoolName = string.IsNullOrWhiteSpace(G("Schulname")) ? null : G("Schulname"),
             SchoolType = string.IsNullOrWhiteSpace(G("Schultyp")) ? null : G("Schultyp"),
             SourceGuid = lkid,
