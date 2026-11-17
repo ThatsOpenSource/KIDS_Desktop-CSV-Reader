@@ -4,18 +4,20 @@
         x:Class="KidsXmlToCsv.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="KIDS — Desktop CSV Reader"
-        Width="1300" Height="880"
+        Width="1400" Height="900"
         MinWidth="900" MinHeight="600"
         Background="White">
 
   <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
 
+    <!-- Header -->
     <StackPanel Grid.Row="0" Margin="0,0,0,12" Spacing="2">
       <TextBlock Classes="title" Text="KIDS — Desktop CSV Reader" />
       <TextBlock Text="Kommunales Informations- und Datensystem für Schülerdaten · v0.1.0"
                  FontSize="12" Foreground="#6b6b6b" />
     </StackPanel>
 
+    <!-- Drop zone -->
     <Border Grid.Row="1"
             x:Name="DropZone"
             BorderBrush="#b3b3b3" BorderThickness="2" CornerRadius="6" Background="#f6f6f6"
@@ -36,22 +38,48 @@
       </StackPanel>
     </Border>
 
+    <!-- Progress + status -->
     <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="6">
       <ProgressBar Height="8" Minimum="0" Maximum="100"
                    Value="{Binding Progress}" Foreground="#111" Background="#ececec" />
       <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="#6b6b6b" />
     </StackPanel>
 
+    <!-- Preview table -->
     <Border Grid.Row="3" IsVisible="{Binding HasPreview}" Margin="0,12,0,0"
             BorderBrush="#d9d9d9" BorderThickness="1" CornerRadius="4">
-        <DataGrid ItemsSource="{Binding PreviewRows}"
-                  AutoGenerateColumns="False"
-                  CanUserReorderColumns="False" CanUserResizeColumns="True"
-                  IsReadOnly="True"
-                  GridLinesVisibility="Horizontal" HeadersVisibility="Column"
-                  BorderThickness="0" FontSize="14"
-                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+      <DataGrid ItemsSource="{Binding PreviewRows}"
+                AutoGenerateColumns="False"
+                CanUserReorderColumns="False" CanUserResizeColumns="True"
+                IsReadOnly="True"
+                GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                BorderThickness="0" FontSize="14"
+                HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
         <DataGrid.Columns>
+          <DataGridTemplateColumn Header="⚠L" Width="26">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate><TextBlock Text="{Binding LkidDupMarker}" Foreground="#b8860b"
+                                       HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="⚠U" Width="26">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate><TextBlock Text="{Binding UsernameDupMarker}" Foreground="#b8860b"
+                                       HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="⚠A" Width="26">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate><TextBlock Text="{Binding AppleIdDupMarker}" Foreground="#b8860b"
+                                       HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="⚠S" Width="26">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate><TextBlock Text="{Binding SystemEmailDupMarker}" Foreground="#b8860b"
+                                       HorizontalAlignment="Center" FontWeight="Bold" /></DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
           <DataGridTextColumn Header="SID"           Binding="{Binding Sid}" Width="60" />
           <DataGridTextColumn Header="SOID"          Binding="{Binding Soid}" Width="50" />
           <DataGridTextColumn Header="Schulname"     Binding="{Binding SchoolName}" Width="200" />
@@ -61,16 +89,19 @@
           <DataGridTextColumn Header="LKID"          Binding="{Binding Lkid}" Width="150" />
           <DataGridTextColumn Header="Name"          Binding="{Binding LastName}" Width="140" />
           <DataGridTextColumn Header="Vorname"       Binding="{Binding FirstName}" Width="120" />
+          <DataGridTextColumn Header="Geburtsdatum"  Binding="{Binding Dob}" Width="110" />
           <DataGridTextColumn Header="Benutzername"  Binding="{Binding Username}" Width="130" />
           <DataGridTextColumn Header="Apple ID"      Binding="{Binding AppleId}" Width="220" />
           <DataGridTextColumn Header="E-Mail"        Binding="{Binding Email}" Width="200" />
           <DataGridTextColumn Header="System-E-Mail" Binding="{Binding SystemEmail}" Width="220" />
+          <DataGridTextColumn Header="vceType"       Binding="{Binding VceType}" Width="80" />
           <DataGridTextColumn Header="Rolle"         Binding="{Binding RoleList}" Width="140" />
-          <DataGridTextColumn Header="Flags"         Binding="{Binding FlagList}" Width="100" />
+          <DataGridTextColumn Header="Flags"         Binding="{Binding FlagList}" Width="160" />
         </DataGrid.Columns>
       </DataGrid>
     </Border>
 
+    <!-- Actions -->
     <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12" Margin="0,12,0,0">
       <Button Classes="primary" Content="Verarbeiten" Command="{Binding ProcessCommand}" />
       <Button Content="{Binding DownloadButtonText}" Command="{Binding DownloadCommand}" />
@@ -81,6 +112,7 @@
       <Button Content="Leeren" Command="{Binding ClearCommand}" />
     </StackPanel>
 
+    <!-- Copyright -->
     <TextBlock Grid.Row="5"
                Text="KIDS v0.1.0 · © eGovernment · Lenny Kunz"
                FontSize="11" Foreground="#9a9a9a"

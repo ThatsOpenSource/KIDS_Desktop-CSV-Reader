@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 using Avalonia;
 
 namespace KidsXmlToCsv;
@@ -12,7 +13,9 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // Clean slate — no crash log for a clean run. Prevents accumulation.
+        // Windows-1252 (ANSI) requires the code-pages provider on .NET.
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
         try { if (File.Exists(CrashLogPath)) File.Delete(CrashLogPath); } catch { }
 
         try
@@ -27,7 +30,6 @@ internal static class Program
                     $"Utc: {DateTime.UtcNow:O}\n{ex}\n");
             }
             catch { /* best effort */ }
-            // No rethrow: the log is the artifact. The debug script reports its path.
         }
     }
 

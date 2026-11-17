@@ -27,6 +27,16 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _suppressGroupHandlers;
     private bool _inRecompute;
 
+    // Snapshot of *original* duplicates, used by RebuildPreview so the
+    // preview grid keeps the ⚠ markers even after Apple ID / System E-Mail
+    // are filled in post-pipeline.
+    private HashSet<string> _originalLkidDups     = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _originalUserDups     = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _originalAppleDups    = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _originalSysEmailDups = new(StringComparer.OrdinalIgnoreCase);
+
+    // ---------------------------------------------------------------- Stage setup
+
     public ObservableCollection<string> SelectedZips { get; } = new();
 
     public StageState PersonIdentityStage { get; } = new() { Kind = DuplicateKind.PersonIdentity, Label = "Doppel-Personen" };
@@ -42,6 +52,8 @@ public sealed partial class MainViewModel : ObservableObject
     public PaginatedGroupCollection UsernamePager       => UsernameStage.Pager;
     public PaginatedGroupCollection AppleIdPager        => AppleIdStage.Pager;
     public PaginatedGroupCollection SystemEmailPager    => SystemEmailStage.Pager;
+
+    // ---------------------------------------------------------------- Observable state
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasPreview))]
@@ -77,6 +89,8 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _generateEmptyUsernames;
     [ObservableProperty] private bool _generateEmptyAppleIds;
     [ObservableProperty] private bool _generateEmptySystemEmails;
+
+    // ---------------------------------------------------------------- Computed state
 
     public bool HasFiles => SelectedZips.Count > 0;
     public bool HasPreview => HasResult && PreviewRows is { Count: > 0 };
@@ -126,6 +140,8 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    // ---------------------------------------------------------------- Constructor
+
     public MainViewModel()
     {
         AllStages = new[] { PersonIdentityStage, LkidStage, UsernameStage, AppleIdStage, SystemEmailStage };
@@ -140,6 +156,8 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnGenerateEmptyUsernamesChanged(bool value) => RecomputeFrom(Array.IndexOf(AllStages, UsernameStage));
     partial void OnGenerateEmptyAppleIdsChanged(bool value) => RecomputeFrom(Array.IndexOf(AllStages, AppleIdStage));
     partial void OnGenerateEmptySystemEmailsChanged(bool value) => RecomputeFrom(Array.IndexOf(AllStages, SystemEmailStage));
+
+    // ---------------------------------------------------------------- Input
 
     public void AddFiles(IEnumerable<string> paths)
     {
@@ -177,14 +195,19 @@ public sealed partial class MainViewModel : ObservableObject
             var result = await Task.Run(() => _pipeline.Run(zips, prog));
             Result = result;
 
-            var rows = new List<PersonRow>(result.Persons.Count);
-            foreach (var p in result.Persons)
-                rows.Add(PersonRow.From(p));
-            PreviewRows = rows;
+            _originalLkidDups     = result.LkidDuplicates.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _originalUserDups     = result.UsernameDuplicates.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _originalAppleDups    = result.AppleIdDuplicates.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _originalSysEmailDups = result.SystemEmailDuplicates.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             HasResult = true;
             Progress = 100;
             IsError = false;
+
+            // RecomputeFrom runs the stage pipeline. When every stage completes
+            // (no duplicates, or user already resolved on a re-run), it calls
+            // RebuildPreview → PreviewRows is populated from BuildResolvedOutput
+            // so the grid matches the export byte-for-byte.
             RecomputeFrom(0);
 
             if (HasDuplicates)
@@ -229,6 +252,8 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     private bool CanClear() => SelectedZips.Count > 0 || HasResult;
+
+    // ---------------------------------------------------------------- Dialog
 
     [RelayCommand] private void OpenDuplicateDialog() { if (HasDuplicates) ShowDuplicateDialog = true; }
     [RelayCommand] private void CloseDuplicateDialog() => ShowDuplicateDialog = false;
@@ -280,7 +305,7 @@ public sealed partial class MainViewModel : ObservableObject
                 foreach (var (stage, g) in snapshot)
                 {
                     if (stage.Kind is DuplicateKind.PersonIdentity)
-                        g.AcceptDefault();     // must keep one record
+                        g.AcceptDefault();  // must keep one
                     else
                         g.Mode = ResolutionMode.DiscardAll;
                 }
@@ -311,9 +336,17 @@ public sealed partial class MainViewModel : ObservableObject
         GenerateEmptyUsernames = false;
         GenerateEmptyAppleIds = false;
         GenerateEmptySystemEmails = false;
+
+        _originalLkidDups     = new(StringComparer.OrdinalIgnoreCase);
+        _originalUserDups     = new(StringComparer.OrdinalIgnoreCase);
+        _originalAppleDups    = new(StringComparer.OrdinalIgnoreCase);
+        _originalSysEmailDups = new(StringComparer.OrdinalIgnoreCase);
+
         RaiseAllCounts();
         OnPropertyChanged(nameof(HasPreview));
     }
+
+    // ---------------------------------------------------------------- Pipeline
 
     private void RecomputeFrom(int startIdx)
     {
@@ -350,6 +383,12 @@ public sealed partial class MainViewModel : ObservableObject
                 stage.IsComplete = stage.Pager.AllGroups.Count == 0
                                 || stage.Pager.AllGroups.All(g => g.IsResolved);
             }
+
+            // Preview reflects the export: rebuild only when the pipeline is
+            // fully settled, so the grid shows the same Apple ID / System
+            // E-Mail that will be written to disk.
+            if (AllStagesComplete)
+                RebuildPreview();
 
             RaiseAllCounts();
             RefreshPreviews();
@@ -395,11 +434,10 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Re-attaches user state from the previous group instances to the freshly
-    /// rebuilt ones. Matches candidates by <see cref="PersonRecord.RecordId"/>
-    /// (stable across every <c>with</c> copy), so selection persists across
-    /// recomputes in every stage — including LKID/PersonIdentity where multiple
-    /// candidates share the same LKID.
+    /// Re-attaches user state to freshly rebuilt groups. Matches candidates
+    /// by <see cref="PersonRecord.RecordId"/> (stable across every
+    /// <c>with</c> copy) so selection survives recomputes even in LKID /
+    /// PersonIdentity groups where multiple candidates share the same LKID.
     /// </summary>
     private static void ReconcileGroups(List<DuplicateGroup> oldGroups, List<DuplicateGroup> newGroups)
     {
@@ -491,7 +529,7 @@ public sealed partial class MainViewModel : ObservableObject
             foreach (var r in stage.InputRecords)
                 if (!string.IsNullOrEmpty(r.Username)) usernameTaken.Add(r.Username);
 
-        // Phase 1 — classify per record
+        // Phase 1 — decide per record
         foreach (var p in stage.InputRecords)
         {
             var v = getField(p);
@@ -570,7 +608,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
         }
 
-        // Phase 2 — generate for the Generate bucket
+        // Phase 2 — generate
         foreach (var p in stage.InputRecords)
         {
             if (decisions[p].Kind != DecisionKind.Generate) continue;
@@ -580,7 +618,7 @@ public sealed partial class MainViewModel : ObservableObject
             decisions[p] = new Decision(DecisionKind.Keep, gen);
         }
 
-        // Phase 3 — emit survivors with updated field
+        // Phase 3 — emit
         var output = new List<PersonRecord>(stage.InputRecords.Count);
         foreach (var p in stage.InputRecords)
         {
@@ -617,6 +655,8 @@ public sealed partial class MainViewModel : ObservableObject
 
         return "";
     }
+
+    // ---------------------------------------------------------------- Previews
 
     private void RefreshPreviews()
     {
@@ -674,7 +714,92 @@ public sealed partial class MainViewModel : ObservableObject
         _ => null,
     };
 
-    private List<PersonRecord> BuildResolvedOutput() => AllStages[^1].OutputRecords;
+    // ---------------------------------------------------------------- Output
+
+    /// <summary>
+    /// Final record list. Fills missing Apple ID / System E-Mail from the
+    /// (now unique) username so preview and export stay in sync.
+    /// </summary>
+    private List<PersonRecord> BuildResolvedOutput()
+    {
+        var final = AllStages[^1].OutputRecords;
+
+        var takenApple = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var takenSysEmail = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in final)
+        {
+            if (!string.IsNullOrEmpty(p.AppleId)) takenApple.Add(p.AppleId);
+            if (!string.IsNullOrEmpty(p.SystemEmail)) takenSysEmail.Add(p.SystemEmail);
+        }
+
+        var output = new List<PersonRecord>(final.Count);
+        foreach (var p in final)
+        {
+            var appleId = p.AppleId;
+            var sysEmail = p.SystemEmail;
+
+            if (string.IsNullOrEmpty(appleId) && !string.IsNullOrEmpty(p.Username))
+            {
+                var candidate = UsernameGenerator.GenerateAppleId(p.Username);
+                if (takenApple.Add(candidate)) appleId = candidate;
+                else
+                {
+                    for (int i = 1; i < 1000; i++)
+                    {
+                        var alt = p.Username + i + "@appleid.ds-greiz.de";
+                        if (takenApple.Add(alt)) { appleId = alt; break; }
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(sysEmail) && !string.IsNullOrEmpty(p.Username))
+            {
+                var soid = p.SoId;
+                if (string.IsNullOrWhiteSpace(soid) && p.SchoolId is { Length: >= 2 } sid)
+                    soid = sid[^2..];
+                var candidate = UsernameGenerator.GenerateSystemEmail(p.Username, soid);
+                if (takenSysEmail.Add(candidate)) sysEmail = candidate;
+                else
+                {
+                    for (int i = 1; i < 1000; i++)
+                    {
+                        var alt = p.Username + i + "@" + (soid ?? "00") + ".schulen-greiz.de";
+                        if (takenSysEmail.Add(alt)) { sysEmail = alt; break; }
+                    }
+                }
+            }
+
+            output.Add(p with { AppleId = appleId, SystemEmail = sysEmail });
+        }
+        return output;
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="PreviewRows"/> from <see cref="BuildResolvedOutput"/>
+    /// so the grid displays exactly what the export will contain (including
+    /// generated Apple ID / System E-Mail). Duplicate markers are attached
+    /// from the original import snapshot, so ⚠ columns still flag the rows
+    /// whose identifiers were duplicated in the input.
+    /// </summary>
+    private void RebuildPreview()
+    {
+        if (Result is null) return;
+        var resolved = BuildResolvedOutput();
+
+        var rows = new List<PersonRow>(resolved.Count);
+        foreach (var p in resolved)
+        {
+            rows.Add(PersonRow.From(
+                p,
+                isDupLkid:        _originalLkidDups.Contains(p.Lkid),
+                isDupUsername:    p.Username is not null && _originalUserDups.Contains(p.Username),
+                isDupAppleId:     p.AppleId is not null && _originalAppleDups.Contains(p.AppleId),
+                isDupSystemEmail: p.SystemEmail is not null && _originalSysEmailDups.Contains(p.SystemEmail)));
+        }
+        PreviewRows = rows;
+    }
+
+    // ---------------------------------------------------------------- Download
 
     public async Task DownloadAsync(IStorageProvider storageProvider)
     {
@@ -688,22 +813,23 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         var resolved = BuildResolvedOutput();
+        var config = ConfigStore.Current;
 
         var file = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-          Title = "KIDS-Export speichern",
-          SuggestedFileName = $"kids-export-{DateTime.Now:yyyy-MM-dd}",
-          DefaultExtension = "xlsx",
-          ShowOverwritePrompt = true,
-          FileTypeChoices = new[]
+            Title = "KIDS-Export speichern",
+            SuggestedFileName = $"kids-export-{DateTime.Now:yyyy-MM-dd}",
+            DefaultExtension = "csv",
+            ShowOverwritePrompt = true,
+            FileTypeChoices = new[]
             {
+                new FilePickerFileType("CSV (ANSI, Semikolon) (*.csv)") { Patterns = new[] { "*.csv" } },
                 new FilePickerFileType("Excel-Arbeitsmappe (*.xlsx)") { Patterns = new[] { "*.xlsx" } },
-                new FilePickerFileType("CSV, UTF-8, Semikolon (*.csv)") { Patterns = new[] { "*.csv" } },
             },
         });
         if (file is null) return;
 
-        var fileName = string.IsNullOrWhiteSpace(file.Name) ? "kids-export" : file.Name;
+        var fileName = string.IsNullOrWhiteSpace(file.Name) ? "kids-export.csv" : file.Name;
         var isCsv = fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
 
         try
@@ -713,14 +839,14 @@ public sealed partial class MainViewModel : ObservableObject
                 stream.SetLength(0);
                 if (isCsv)
                 {
-                    var csv = CsvWriter.Build(resolved);
-                    var utf8WithBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
-                    await using var writer = new StreamWriter(stream, utf8WithBom);
+                    var csv = CsvWriter.Build(resolved, config);
+                    var encoding = ResolveEncoding(config.Output.Encoding);
+                    await using var writer = new StreamWriter(stream, encoding);
                     await writer.WriteAsync(csv);
                 }
                 else
                 {
-                    var bytes = XlsxWriter.Build(resolved);
+                    var bytes = XlsxWriter.Build(resolved, config);
                     await stream.WriteAsync(bytes);
                 }
             }
@@ -753,6 +879,23 @@ public sealed partial class MainViewModel : ObservableObject
             Status = "Speichern fehlgeschlagen: " + ex.Message;
         }
     }
+
+    private static Encoding ResolveEncoding(string name) => (name ?? "").Trim().ToLowerInvariant() switch
+    {
+        "utf-8" or "utf8"                    => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        "utf-8-bom" or "utf8-bom"            => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+        "latin1" or "iso-8859-1"             => Encoding.Latin1,
+        "ansi" or "windows-1252" or "cp1252" => GetWindows1252(),
+        _                                    => GetWindows1252(),
+    };
+
+    private static Encoding GetWindows1252()
+    {
+        try { return Encoding.GetEncoding(1252); }
+        catch { return Encoding.Latin1; }
+    }
+
+    // ---------------------------------------------------------------- Notifications
 
     private void RaiseAllCounts()
     {

@@ -7,16 +7,11 @@ namespace KidsXmlToCsv.Services;
 
 public static class CsvInputParser
 {
-    private static readonly Regex AppleIdRx = new(
-        @"^[^\s@]+@appleid\.ds-greiz\.de$",
+    private static readonly Regex AppleIdRx = new(@"^[^\s@]+@appleid\.ds-greiz\.de$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    private static readonly Regex SystemEmailRx = new(
-        @"^[^\s@]+@\d+\.schulen-greiz\.de$",
+    private static readonly Regex SystemEmailRx = new(@"^[^\s@]+@\d+\.schulen-greiz\.de$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    private static readonly Regex EmailRx = new(
-        @"^[^\s@]+@[^\s@]+\.[^\s@]+$",
+    private static readonly Regex EmailRx = new(@"^[^\s@]+@[^\s@]+\.[^\s@]+$",
         RegexOptions.Compiled);
 
     private enum Schema { Step1, KidsExport }
@@ -33,6 +28,7 @@ public static class CsvInputParser
         var headers = ParseCsvLine(lines[0], delimiter).Select(h => h.Trim()).ToList();
         var schema = DetectSchema(headers);
         var result = new List<PersonRecord>();
+        var config = ConfigStore.Current;
 
         for (int i = 1; i < lines.Count; i++)
         {
@@ -44,7 +40,7 @@ public static class CsvInputParser
 
             var p = schema == Schema.KidsExport
                 ? ConvertRowKids(dict, warnings, i + 1, sourceFile)
-                : ConvertRowStep1(dict, warnings, i + 1, sourceFile);
+                : ConvertRowStep1(dict, warnings, i + 1, sourceFile, config);
             if (p != null) result.Add(p);
         }
         return result;
@@ -52,14 +48,12 @@ public static class CsvInputParser
 
     private static char DetectDelimiter(string headerLine)
     {
-        int sc = 0, cc = 0;
-        bool inQuote = false;
+        int sc = 0, cc = 0; bool inQuote = false;
         foreach (var c in headerLine)
         {
             if (c == '"') { inQuote = !inQuote; continue; }
             if (inQuote) continue;
-            if (c == ';') sc++;
-            else if (c == ',') cc++;
+            if (c == ';') sc++; else if (c == ',') cc++;
         }
         return sc >= cc ? ';' : ',';
     }
@@ -67,15 +61,9 @@ public static class CsvInputParser
     private static Schema DetectSchema(List<string> headers)
     {
         bool Has(string k) => headers.Any(h => h.Equals(k, StringComparison.OrdinalIgnoreCase));
-
-        // KIDS export signature: SID + LKID + Rolle (not present in Step1)
         if (Has("SID") && Has("LKID") && Has("Rolle")) return Schema.KidsExport;
-
-        // Fallback: Step1 (original school export)
         return Schema.Step1;
     }
-
-    // ---------------- Shared helpers ----------------
 
     private static bool IsTruthy(string? val)
     {
@@ -130,20 +118,10 @@ public static class CsvInputParser
             if (c == '"')
             {
                 if (inQuote && i + 1 < line.Length && line[i + 1] == '"')
-                {
-                    sb.Append('"');
-                    i += 2;
-                    continue;
-                }
-                inQuote = !inQuote;
-                i++;
+                { sb.Append('"'); i += 2; continue; }
+                inQuote = !inQuote; i++;
             }
-            else if (c == delimiter && !inQuote)
-            {
-                fields.Add(sb.ToString());
-                sb.Clear();
-                i++;
-            }
+            else if (c == delimiter && !inQuote) { fields.Add(sb.ToString()); sb.Clear(); i++; }
             else { sb.Append(c); i++; }
         }
         fields.Add(sb.ToString());
@@ -155,13 +133,31 @@ public static class CsvInputParser
         if (string.IsNullOrWhiteSpace(raw)) return new();
         return raw
             .Split(new[] { '|', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
+            .Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
     }
 
-    // ---------------- Step1 (school raw export) ----------------
+    /// <summary>Looks up a flag alias in the config and returns its data_id.</summary>
+    private static string? ResolveFlag(string raw, AppConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        foreach (var f in config.Flags)
+        {
+            if (f.DataId.Equals(raw, StringComparison.OrdinalIgnoreCase)) return f.DataId;
+            if (f.Aliases.Any(a => a.Equals(raw, StringComparison.OrdinalIgnoreCase))) return f.DataId;
+        }
+        return raw;
+    }
 
-    private static PersonRecord? ConvertRowStep1(Dictionary<string, string> d, List<string> warnings, int lineNo, string sourceFile)
+    private static int? ResolveRoleVceType(string roleId, AppConfig config)
+    {
+        var r = config.Roles.FirstOrDefault(x => x.Id.Equals(roleId, StringComparison.OrdinalIgnoreCase));
+        return r?.VceType > 0 ? r.VceType : null;
+    }
+
+    // ---------------- Step1 ----------------
+
+    private static PersonRecord? ConvertRowStep1(Dictionary<string, string> d, List<string> warnings,
+                                                 int lineNo, string sourceFile, AppConfig config)
     {
         string G(string key) => d.TryGetValue(key, out var v) ? (v ?? "").Trim() : "";
 
@@ -203,9 +199,22 @@ public static class CsvInputParser
         if (isLehrer) roles.Add("Lehrer");
         if (roles.Count == 0) roles.Add("Sonstige");
 
+        int? vceType = null;
+        if (int.TryParse(kontentyp, out var vt)) vceType = vt;
+        if (vceType is null && roles.Count > 0)
+            vceType = ResolveRoleVceType(roles[0], config);
+
         var flags = new List<string>();
-        if (IsTruthy(dvv)) flags.Add("dvv");
-        if (IsTruthy(sgPrt)) flags.Add("print");
+        if (IsTruthy(dvv))
+        {
+            var resolved = ResolveFlag("dvv", config);
+            if (resolved != null) flags.Add(resolved);
+        }
+        if (IsTruthy(sgPrt))
+        {
+            var resolved = ResolveFlag("print", config);
+            if (resolved != null) flags.Add(resolved);
+        }
 
         var candidates = new List<string>();
         foreach (var part in (mdmEmailRaw + ";" + appleIdRaw).Split(new[] { ';', ',' },
@@ -242,6 +251,7 @@ public static class CsvInputParser
             Email = privateEmail,
             SystemEmail = systemEmail,
             AppleId = appleId,
+            VceType = vceType,
             IsStudent = isSchueler,
             IsTeacher = isLehrer,
             Roles = roles,
@@ -250,9 +260,10 @@ public static class CsvInputParser
         };
     }
 
-    // ---------------- KIDS export (round-trip) ----------------
+    // ---------------- KIDS export round-trip ----------------
 
-    private static PersonRecord? ConvertRowKids(Dictionary<string, string> d, List<string> warnings, int lineNo, string sourceFile)
+    private static PersonRecord? ConvertRowKids(Dictionary<string, string> d, List<string> warnings,
+                                                 int lineNo, string sourceFile)
     {
         string G(string key) => d.TryGetValue(key, out var v) ? (v ?? "").Trim() : "";
 
@@ -263,65 +274,48 @@ public static class CsvInputParser
             return null;
         }
 
-        var sid = G("SID");
-        var sgid = G("SGID");
         var soid = G("SOID");
-        var schulname = G("Schulname");
-        var schultyp = G("Schultyp");
-        var klasse = G("Klasse");
-        var stufe = G("Stufe");
-        var vorname = G("Vorname");
-        var nachname = G("Name");
-        var username = G("Benutzername");
-        var appleId = G("Apple ID");
-        var email = G("E-Mail");
-        var systemEmail = G("System-E-Mail");
-        var rolle = G("Rolle");
-        var flagsRaw = G("Flags");
+        List<string> StripSoId(IEnumerable<string> items) =>
+            items.Select(s => !string.IsNullOrEmpty(soid)
+                              && s.StartsWith(soid + "-", StringComparison.OrdinalIgnoreCase)
+                                ? s[(soid.Length + 1)..] : s)
+                 .Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
 
-        // Strip "{soid}-" prefixes so the internal model holds bare names/ids.
-        List<string> StripPrefix(IEnumerable<string> items) =>
-            items.Select(s =>
-            {
-                if (!string.IsNullOrEmpty(soid) &&
-                    s.StartsWith(soid + "-", StringComparison.OrdinalIgnoreCase))
-                    return s[(soid.Length + 1)..];
-                return s;
-            })
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
+        var classes = StripSoId(SplitList(G("Klasse")));
+        var roles = StripSoId(SplitList(G("Rolle")));
+        var flags = SplitList(G("Flags")).Where(f => !roles.Contains(f)).ToList();
 
-        var classes = StripPrefix(SplitList(klasse));
-        var roles = StripPrefix(SplitList(rolle));
-        var flags = SplitList(flagsRaw);
+        int? vceType = null;
+        if (int.TryParse(G("vceType"), out var vt)) vceType = vt;
 
         return new PersonRecord
         {
             Lkid = lkid,
-            FirstName = vorname,
-            LastName = nachname,
-            DateOfBirth = null,
-            Username = string.IsNullOrWhiteSpace(username) ? null : username.ToLowerInvariant(),
-            ClassName = classes.Count > 0 ? string.Join(CsvWriter.ListSeparator, classes) : null,
-            SchoolId = string.IsNullOrWhiteSpace(sid) ? null : sid,
+            FirstName = G("Vorname"),
+            LastName = G("Name"),
+            DateOfBirth = ParseGermanDate(G("Geburtsdatum")),
+            Username = string.IsNullOrWhiteSpace(G("Benutzername")) ? null : G("Benutzername").ToLowerInvariant(),
+            ClassName = classes.Count > 0 ? string.Join('|', classes) : null,
+            SchoolId = string.IsNullOrWhiteSpace(G("SID")) ? null : G("SID"),
             SoId = string.IsNullOrWhiteSpace(soid) ? null : soid,
-            SgId = string.IsNullOrWhiteSpace(sgid) ? null : sgid,
-            SchoolName = string.IsNullOrWhiteSpace(schulname) ? null : schulname,
-            SchoolType = string.IsNullOrWhiteSpace(schultyp) ? null : schultyp,
+            SgId = string.IsNullOrWhiteSpace(G("SGID")) ? null : G("SGID"),
+            SchoolName = string.IsNullOrWhiteSpace(G("Schulname")) ? null : G("Schulname"),
+            SchoolType = string.IsNullOrWhiteSpace(G("Schultyp")) ? null : G("Schultyp"),
             SourceGuid = lkid,
             SourceFile = sourceFile,
-            Email = string.IsNullOrWhiteSpace(email) ? null : email.ToLowerInvariant(),
-            SystemEmail = string.IsNullOrWhiteSpace(systemEmail) ? null : systemEmail.ToLowerInvariant(),
-            AppleId = string.IsNullOrWhiteSpace(appleId) ? null : appleId.ToLowerInvariant(),
+            Email = string.IsNullOrWhiteSpace(G("E-Mail")) ? null : G("E-Mail").ToLowerInvariant(),
+            SystemEmail = string.IsNullOrWhiteSpace(G("System-E-Mail")) ? null : G("System-E-Mail").ToLowerInvariant(),
+            AppleId = string.IsNullOrWhiteSpace(G("Apple ID")) ? null : G("Apple ID").ToLowerInvariant(),
+            VceType = vceType,
             Roles = roles,
             Flags = flags,
-            Grade = string.IsNullOrWhiteSpace(stufe) ? null : stufe,
+            Grade = string.IsNullOrWhiteSpace(G("Stufe")) ? null : G("Stufe"),
             IsStudent = roles.Contains("Schueler"),
             IsTeacher = roles.Contains("Lehrer"),
         };
     }
 
-    // ---------------- Misc ----------------
+    // ---------------- helpers ----------------
 
     private static string? ResolveSchoolType(string kzOu, string schule)
     {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
@@ -5,24 +6,11 @@ using KidsXmlToCsv.Models;
 
 namespace KidsXmlToCsv.Services;
 
-/// <summary>
-/// Minimal, dependency-free XLSX writer. Produces a spec-compliant
-/// Office Open XML workbook (inline strings only — no sharedStrings needed).
-/// Encoding-agnostic, delimiter-agnostic, opens identically on Windows,
-/// macOS and Linux, on every Excel locale.
-/// </summary>
 public static class XlsxWriter
 {
-    private static readonly string[] Headers =
+    public static byte[] Build(IReadOnlyList<PersonRecord> persons, AppConfig? config = null)
     {
-        "SID", "SGID", "SOID", "Schulname", "Schultyp",
-        "Klasse", "Stufe", "LKID", "Name", "Vorname",
-        "Benutzername", "Apple ID", "E-Mail", "System-E-Mail",
-        "Rolle", "Flags",
-    };
-
-    public static byte[] Build(IReadOnlyList<PersonRecord> persons)
-    {
+        config ??= ConfigStore.Current;
         using var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
         {
@@ -30,102 +18,105 @@ public static class XlsxWriter
             WriteEntry(zip, "_rels/.rels", RootRels);
             WriteEntry(zip, "xl/workbook.xml", Workbook);
             WriteEntry(zip, "xl/_rels/workbook.xml.rels", WorkbookRels);
-            WriteEntry(zip, "xl/worksheets/sheet1.xml", BuildSheet(persons));
+            WriteEntry(zip, "xl/worksheets/sheet1.xml", BuildSheet(persons, config));
         }
         return ms.ToArray();
     }
 
-    private static string BuildSheet(IReadOnlyList<PersonRecord> persons)
+    private static string BuildSheet(IReadOnlyList<PersonRecord> persons, AppConfig config)
     {
+        var columns = config.Columns.Where(c => c.ExportEnabled).ToList();
         var sb = new StringBuilder(64 * 1024);
         sb.Append(@"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>");
-        sb.Append(@"<worksheet xmlns=""http://schemas.openxmlformats.org/spreadsheetml/2006/main"">");
-        sb.Append("<sheetData>");
+        sb.Append(@"<worksheet xmlns=""http://schemas.openxmlformats.org/spreadsheetml/2006/main""><sheetData>");
 
-        // Header row (row 1)
-        sb.Append("<row>");
-        for (int i = 0; i < Headers.Length; i++)
-            sb.Append(CellInline(i, 1, Headers[i]));
-        sb.Append("</row>");
+        int rowIdx = 1;
 
-        var sorted = persons
+        if (config.Output.Headers)
+        {
+            sb.Append("<row>");
+            for (int i = 0; i < columns.Count; i++)
+                sb.Append(CellInline(i, rowIdx, columns[i].ExportName));
+            sb.Append("</row>");
+            rowIdx++;
+        }
+
+        foreach (var p in persons
             .OrderBy(p => p.SchoolId ?? "", StringComparer.Ordinal)
             .ThenBy(p => p.IsStudent ? 0 : 1)
             .ThenBy(p => p.ClassName ?? "", StringComparer.Ordinal)
             .ThenBy(p => p.LastName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(p => p.FirstName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        for (int r = 0; r < sorted.Count; r++)
+            .ThenBy(p => p.FirstName, StringComparer.OrdinalIgnoreCase))
         {
-            var p = sorted[r];
-            var row = 2 + r;
-
-            var cells = new[]
-            {
-                p.SchoolId ?? "",
-                p.SgId ?? "",
-                p.SoId ?? "",
-                p.SchoolName ?? "",
-                p.SchoolType ?? "",
-                string.Join(CsvWriter.ListSeparator, CsvWriter.BuildClassLabels(p)),
-                p.Grade ?? "",
-                p.Lkid,
-                p.LastName,
-                p.FirstName,
-                p.Username ?? "",
-                p.AppleId ?? "",
-                p.Email ?? "",
-                p.SystemEmail ?? "",
-                string.Join(CsvWriter.ListSeparator, CsvWriter.BuildRoleLabels(p)),
-                string.Join(CsvWriter.ListSeparator, p.Flags.Distinct().OrderBy(x => x)),
-            };
-
             sb.Append("<row>");
-            for (int c = 0; c < cells.Length; c++)
-                sb.Append(CellInline(c, row, cells[c]));
+            for (int c = 0; c < columns.Count; c++)
+            {
+                var val = FormatColumn(columns[c].Field, p, config);
+                if (string.IsNullOrEmpty(val)) continue;
+                sb.Append(CellInline(c, rowIdx, val));
+            }
             sb.Append("</row>");
+            rowIdx++;
         }
 
         sb.Append("</sheetData></worksheet>");
         return sb.ToString();
     }
 
-    private static string CellInline(int col, int row, string value)
+    private static string FormatColumn(string field, PersonRecord p, AppConfig cfg) => field switch
     {
-        if (string.IsNullOrEmpty(value)) return "";
-        var cellRef = ColumnName(col) + row.ToString();
-        return $"<c r=\"{cellRef}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{XmlEscape(value)}</t></is></c>";
+        "sid"           => p.SchoolId ?? "",
+        "sgid"          => p.SgId ?? "",
+        "soid"          => p.SoId ?? "",
+        "school_name"   => p.SchoolName ?? "",
+        "school_type"   => p.SchoolType ?? "",
+        "class"         => string.Join(cfg.Output.ListSeparator, CsvWriter.BuildClassLabels(p, cfg)),
+        "grade"         => p.Grade ?? "",
+        "lkid"          => p.Lkid,
+        "last_name"     => p.LastName,
+        "first_name"    => p.FirstName,
+        "date_of_birth" => FormatDate(p.DateOfBirth, cfg.Output.DateFormat),
+        "username"      => p.Username ?? "",
+        "apple_id"      => p.AppleId ?? "",
+        "email"         => p.Email ?? "",
+        "system_email"  => p.SystemEmail ?? "",
+        "vce_type"      => p.VceType?.ToString() ?? "",
+        "roles"         => string.Join(cfg.Output.ListSeparator, CsvWriter.BuildRoleLabels(p, cfg)),
+        "flags"         => string.Join(cfg.Output.ListSeparator, CsvWriter.BuildFlagsColumn(p)),
+        _               => "",
+    };
+
+    private static string FormatDate(string? iso, string fmt)
+    {
+        if (string.IsNullOrEmpty(iso)) return "";
+        if (DateTime.TryParseExact(iso, "yyyy-MM-dd",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+            return d.ToString(fmt);
+        return iso;
     }
 
-    /// <summary>0 → A, 25 → Z, 26 → AA, 27 → AB, …</summary>
+    private static string CellInline(int col, int row, string value) =>
+        $"<c r=\"{ColumnName(col)}{row}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{XmlEscape(value)}</t></is></c>";
+
     private static string ColumnName(int index)
     {
         var name = "";
         index++;
-        while (index > 0)
-        {
-            index--;
-            name = (char)('A' + (index % 26)) + name;
-            index /= 26;
-        }
+        while (index > 0) { index--; name = (char)('A' + index % 26) + name; index /= 26; }
         return name;
     }
 
     private static string XmlEscape(string s)
     {
         var sb = new StringBuilder(s.Length + 8);
-        foreach (var c in s)
+        foreach (var c in s) switch (c)
         {
-            switch (c)
-            {
-                case '&': sb.Append("&amp;"); break;
-                case '<': sb.Append("&lt;");  break;
-                case '>': sb.Append("&gt;");  break;
-                case '"': sb.Append("&quot;"); break;
-                case '\'': sb.Append("&apos;"); break;
-                default: sb.Append(c); break;
-            }
+            case '&':  sb.Append("&amp;"); break;
+            case '<':  sb.Append("&lt;"); break;
+            case '>':  sb.Append("&gt;"); break;
+            case '"':  sb.Append("&quot;"); break;
+            case '\'': sb.Append("&apos;"); break;
+            default:   sb.Append(c); break;
         }
         return sb.ToString();
     }
@@ -133,9 +124,9 @@ public static class XlsxWriter
     private static void WriteEntry(ZipArchive zip, string name, string content)
     {
         var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
-        using var stream = entry.Open();
-        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
-        writer.Write(content);
+        using var s = entry.Open();
+        using var w = new StreamWriter(s, new UTF8Encoding(false));
+        w.Write(content);
     }
 
     private const string ContentTypes = @"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>
@@ -153,9 +144,7 @@ public static class XlsxWriter
 
     private const string Workbook = @"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>
 <workbook xmlns=""http://schemas.openxmlformats.org/spreadsheetml/2006/main"" xmlns:r=""http://schemas.openxmlformats.org/officeDocument/2006/relationships"">
-  <sheets>
-    <sheet name=""Personen"" sheetId=""1"" r:id=""rId1""/>
-  </sheets>
+  <sheets><sheet name=""Personen"" sheetId=""1"" r:id=""rId1""/></sheets>
 </workbook>";
 
     private const string WorkbookRels = @"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>
